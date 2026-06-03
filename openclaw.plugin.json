@@ -1,0 +1,35 @@
+{
+  "id": "resilience",
+  "name": "Resilience",
+  "description": "LLM API error tracking, classification, retry, and task recovery",
+  "version": "0.1.0",
+  "author": "openclaw-community",
+  "license": "MIT",
+  "contracts": {
+    "tools": ["resilience_stats", "resilience_strategies", "resilience_report"]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "logDir": {
+        "type": "string",
+        "description": "Custom log directory path"
+      },
+      "statsRetentionDays": {
+        "type": "number",
+        "description": "Days to keep stats data",
+        "default": 90
+      },
+      "defaultStrategy": {
+        "type": "string",
+        "enum": ["fixed", "exponential", "custom"],
+        "description": "Default retry strategy type",
+        "default": "exponential"
+      }
+    },
+    "additionalProperties": false
+  }
+}

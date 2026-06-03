@@ -1,0 +1,47 @@
+[
+  {
+    "name": "default-exponential",
+    "type": "exponential",
+    "maxRetries": 5,
+    "intervals": [60000, 180000, 300000, 600000, 900000],
+    "retryOn": ["rate_limit", "server_overload", "timeout", "network_error"],
+    "cooldownMs": 10000,
+    "description": "General exponential backoff for transient errors"
+  },
+  {
+    "name": "rate-limit-fixed",
+    "type": "fixed",
+    "maxRetries": 3,
+    "intervals": [30000],
+    "retryOn": ["rate_limit"],
+    "cooldownMs": 5000,
+    "description": "Fixed 30s retry for rate-limited requests"
+  },
+  {
+    "name": "model-backoff",
+    "type": "custom",
+    "maxRetries": 6,
+    "intervals": [60000, 300000, 600000, 1800000, 3600000, 7200000],
+    "retryOn": ["server_overload", "model_unavailable"],
+    "cooldownMs": 30000,
+    "description": "Aggressive backoff for model-level issues (1m → 5m → 10m → 30m → 1h → 2h)"
+  },
+  {
+    "name": "auth-no-retry",
+    "type": "fixed",
+    "maxRetries": 0,
+    "intervals": [],
+    "retryOn": ["auth_failed"],
+    "cooldownMs": 0,
+    "description": "No retry for auth failures (manual intervention needed)"
+  },
+  {
+    "name": "network-retry",
+    "type": "exponential",
+    "maxRetries": 4,
+    "intervals": [5000, 15000, 30000, 60000],
+    "retryOn": ["network_error"],
+    "cooldownMs": 3000,
+    "description": "Quick retry for network blips (5s → 15s → 30s → 1m)"
+  }
+]
