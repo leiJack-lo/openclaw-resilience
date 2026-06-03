@@ -2,6 +2,8 @@
 
 LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 
+这个项目以 Apache-2.0 协议开源，希望把 OpenClaw 使用中常见的 API 过载、超时、重试和任务恢复问题沉淀成一个大家都能直接使用、改进和分享的插件。
+
 ## 简介
 
 当你使用大模型 API（无论是内网部署还是云端服务）时，经常会遇到：
@@ -29,7 +31,7 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 ```bash
 # 1. 克隆到 OpenClaw 插件目录
 cd ~/.openclaw/plugins/
-git clone https://github.com/openclaw-community/openclaw-resilience.git
+git clone https://github.com/leiJack-lo/openclaw-resilience.git
 
 # 2. 安装依赖
 cd openclaw-resilience
@@ -46,7 +48,7 @@ openclaw gateway restart
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/openclaw-community/openclaw-resilience.git
+git clone https://github.com/leiJack-lo/openclaw-resilience.git
 cd openclaw-resilience
 
 # 2. 安装依赖并构建
@@ -294,7 +296,7 @@ npm run clean
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 和 Pull Request。这个插件的目标很朴素：把实际使用 OpenClaw 时遇到的模型 API 报错、过载、超时和任务中断问题，变成可复用的解决方案。
 
 1. Fork 本项目
 2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
@@ -304,7 +306,7 @@ npm run clean
 
 ## 许可证
 
-MIT License
+Apache License 2.0. 详见 [LICENSE](./LICENSE)。
 
 ## 相关
 

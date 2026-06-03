@@ -5,6 +5,14 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leiJack-lo/openclaw-resilience.git"
+  },
+  "bugs": {
+    "url": "https://github.com/leiJack-lo/openclaw-resilience/issues"
+  },
+  "homepage": "https://github.com/leiJack-lo/openclaw-resilience#readme",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -27,7 +35,8 @@
     "error-tracking",
     "llm"
   ],
-  "license": "MIT",
+  "author": "leiJack-lo",
+  "license": "Apache-2.0",
   "dependencies": {
     "typebox": "^1.1.38"
   },

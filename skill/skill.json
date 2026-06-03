@@ -3,8 +3,8 @@
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
   "version": "0.1.0",
-  "author": "openclaw-community",
-  "license": "MIT",
+  "author": "leiJack-lo",
+  "license": "Apache-2.0",
   "plugin": "resilience",
   "tools": ["resilience_stats", "resilience_strategies", "resilience_report"],
   "naturalLanguage": {
