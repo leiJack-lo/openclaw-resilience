@@ -277,20 +277,7 @@ resilience_dashboard({ action: "stop" })
 
 ## 数据存储
 
-所有数据持久化在 `~/.openclaw/plugins/resilience/` 目录：
-
-```
-~/.openclaw/plugins/resilience/
-├── logs/                    # 按日期的 JSONL 日志
-│   ├── 2026-06-01.jsonl
-│   ├── 2026-06-02.jsonl
-│   └── 2026-06-03.jsonl
-├── stats.json               # 聚合统计数据
-├── strategies.json          # 重试策略配置
-└── tasks/                   # 可恢复任务状态
-    ├── task-001.json
-    └── task-002.json
-```
+每个实例的数据在 `~/.openclaw/plugins/resilience/instances/<instance-id>/`（见「多实例」章节）。旧版单目录布局仍可读。
 
 ### 日志格式
 
