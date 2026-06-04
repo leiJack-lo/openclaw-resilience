@@ -15,18 +15,20 @@ fi
 echo "Building..."
 npm run build
 
-echo "Publishing plugin @leiJack-lo/resilience@${VERSION}..."
-clawhub package publish . \
+SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+echo "Publishing plugin @leiJack-lo/resilience@${VERSION} (commit ${SOURCE_COMMIT:0:7})..."
+clawhub --workdir "$ROOT" package publish "$ROOT" \
   --family code-plugin \
   --name @leiJack-lo/resilience \
   --display-name "Resilience" \
   --version "$VERSION" \
   --changelog "$CHANGELOG" \
   --source-repo leiJack-lo/openclaw-resilience \
+  --source-commit "$SOURCE_COMMIT" \
   --source-path "."
 
 echo "Publishing skill leiJack-lo/resilience-monitor..."
-clawhub publish skill/ \
+clawhub --workdir "$ROOT" publish "$ROOT/skill" \
   --slug resilience-monitor \
   --name "Resilience Monitor" \
   --version "$VERSION" \
