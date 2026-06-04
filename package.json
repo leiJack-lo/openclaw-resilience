@@ -1,6 +1,6 @@
 {
   "name": "@openclaw/resilience",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "LLM API error tracking, classification, retry, and task recovery plugin for OpenClaw",
   "type": "module",
   "main": "./dist/index.js",

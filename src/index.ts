@@ -16,6 +16,13 @@ import { StatsCollector } from "./stats-collector.js";
 import { RetryEngine } from "./retry-engine.js";
 import { TaskRecovery } from "./task-recovery.js";
 import { DashboardServer } from "./dashboard-server.js";
+import { InstanceAggregator } from "./instance-aggregator.js";
+import {
+  resolveInstanceContext,
+  touchInstanceMeta,
+  migrateLegacyToDefault,
+} from "./instance-registry.js";
+import type { InstancePaths } from "./instance-registry.js";
 import type {
   LogEntry,
   ErrorCategory,
@@ -25,10 +32,12 @@ import type {
 
 // ─── Module State ───────────────────────────────────────────────────────────
 
+let instancePaths: InstancePaths;
 let logger: ResilienceLogger;
 let stats: StatsCollector;
 let retryEngine: RetryEngine;
 let taskRecovery: TaskRecovery;
+let instanceAggregator: InstanceAggregator;
 let dashboardServer: DashboardServer | null = null;
 let pluginConfig: ResilienceConfig = {};
 
@@ -45,10 +54,7 @@ function openInBrowser(url: string): void {
 async function ensureDashboardRunning(): Promise<DashboardServer> {
   const port = pluginConfig.dashboardPort ?? 18765;
   if (!dashboardServer) {
-    dashboardServer = new DashboardServer(
-      { stats, retryEngine, logger, taskRecovery },
-      port
-    );
+    dashboardServer = new DashboardServer(instanceAggregator, port);
   }
   if (!dashboardServer.isRunning()) {
     await dashboardServer.start();
@@ -192,6 +198,7 @@ function processCallResult(params: {
 
     logger.logError({
       timestamp: new Date().toISOString(),
+      instanceId: instancePaths.id,
       provider,
       model,
       errorType: classified.category,
@@ -220,6 +227,7 @@ function processCallResult(params: {
   // Success path
   logger.logSuccess({
     timestamp: new Date().toISOString(),
+    instanceId: instancePaths.id,
     provider,
     model,
     durationMs,
@@ -252,14 +260,28 @@ export default definePluginEntry({
     // Read plugin config
     pluginConfig = (api.pluginConfig as ResilienceConfig) ?? {};
 
-    // ─── Initialize Subsystems ────────────────────────────────────────
+    // ─── Initialize Subsystems (per OpenClaw instance) ────────────────
 
-    logger = new ResilienceLogger(pluginConfig.logDir);
-    stats = new StatsCollector();
-    retryEngine = new RetryEngine();
-    taskRecovery = new TaskRecovery();
+    instancePaths = resolveInstanceContext(pluginConfig);
+    const logDir = pluginConfig.logDir ?? instancePaths.logDir;
 
-    api.logger.info("[resilience] Subsystems initialized");
+    logger = new ResilienceLogger(logDir);
+    stats = new StatsCollector(instancePaths.statsPath);
+    retryEngine = new RetryEngine(instancePaths.strategiesPath);
+    taskRecovery = new TaskRecovery(instancePaths.tasksDir);
+    instanceAggregator = new InstanceAggregator(instancePaths);
+
+    retryEngine.onActiveRetriesChanged = (states) => {
+      instanceAggregator.persistActiveRetries(states);
+    };
+
+    touchInstanceMeta(instancePaths, {
+      workspacePath: pluginConfig.workspacePath ?? process.cwd(),
+    });
+
+    api.logger.info(
+      `[resilience] Instance "${instancePaths.label}" (${instancePaths.id}) initialized`
+    );
 
     // ─── Tool: resilience_stats ───────────────────────────────────────
 
@@ -809,6 +831,11 @@ export default definePluginEntry({
      * Initialize on gateway startup.
      */
     api.on("gateway_start", async () => {
+      migrateLegacyToDefault();
+      touchInstanceMeta(instancePaths, {
+        workspacePath: pluginConfig.workspacePath ?? process.cwd(),
+      });
+
       // Cleanup old data
       logger.cleanup(pluginConfig.statsRetentionDays ?? 90);
       stats.cleanup(7);

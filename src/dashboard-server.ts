@@ -2,18 +2,15 @@
  * Resilience Dashboard HTTP Server
  *
  * Serves the skill/dashboard UI and JSON API for live stats & strategy management.
+ * Supports multi-instance aggregation via ?instance=all|<id>.
  */
 
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { categoryLabel } from "./error-classifier.js";
-import type { StatsCollector } from "./stats-collector.js";
-import type { RetryEngine } from "./retry-engine.js";
-import type { ResilienceLogger } from "./logger.js";
-import type { TaskRecovery } from "./task-recovery.js";
-import type { ErrorCategory, RetryStrategy } from "./types.js";
+import { InstanceAggregator } from "./instance-aggregator.js";
+import type { RetryStrategy } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_ROOT = path.join(__dirname, "..", "skill", "dashboard");
@@ -27,25 +24,19 @@ const MIME: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-export interface DashboardServerDeps {
-  stats: StatsCollector;
-  retryEngine: RetryEngine;
-  logger: ResilienceLogger;
-  taskRecovery: TaskRecovery;
-}
-
 export class DashboardServer {
   private server: http.Server | null = null;
   private port: number;
-  private deps: DashboardServerDeps;
+  private aggregator: InstanceAggregator;
 
-  constructor(deps: DashboardServerDeps, port = 18765) {
-    this.deps = deps;
+  constructor(aggregator: InstanceAggregator, port = 18765) {
+    this.aggregator = aggregator;
     this.port = port;
   }
 
-  getUrl(): string {
-    return `http://127.0.0.1:${this.port}/`;
+  getUrl(instance?: string): string {
+    const q = instance && instance !== "all" ? `?instance=${encodeURIComponent(instance)}` : "";
+    return `http://127.0.0.1:${this.port}/${q}`;
   }
 
   isRunning(): boolean {
@@ -78,6 +69,10 @@ export class DashboardServer {
     });
   }
 
+  private instanceParam(url: URL): string | undefined {
+    return url.searchParams.get("instance") ?? undefined;
+  }
+
   private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
     const method = req.method ?? "GET";
@@ -106,80 +101,95 @@ export class DashboardServer {
     req: http.IncomingMessage,
     res: http.ServerResponse
   ): Promise<void> {
-    const { stats, retryEngine, logger, taskRecovery } = this.deps;
+    const instance = this.instanceParam(url);
+    const agg = this.aggregator;
 
-    if (method === "GET" && url.pathname === "/api/overview") {
-      const today = stats.getTodaySummary();
-      const hour = stats.getCurrentHourSummary();
-      const week = stats.getWeekSummary();
-      const activeRetries = Object.fromEntries(retryEngine.getActiveRetries());
-      const failedTasks = taskRecovery.getRecoverableTasks().length;
-      const recentErrors = logger
-        .readTodayLogs()
-        .filter((l) => l.errorType !== "success")
-        .slice(-20)
-        .reverse();
-
+    if (method === "GET" && url.pathname === "/api/instances") {
       this.json(res, {
-        lastUpdated: stats.getRawData().lastUpdated,
-        today,
-        hour,
-        week,
-        activeRetries,
-        failedTasks,
-        recentErrors: recentErrors.map((e) => ({
-          ...e,
-          errorLabel: categoryLabel(e.errorType as ErrorCategory),
+        instances: agg.listInstances().map((i) => ({
+          id: i.id,
+          label: i.label,
+          hasStats: i.hasStats,
+          isLegacy: i.isLegacy,
+          lastSeenAt: i.lastSeenAt,
+          workspacePath: i.workspacePath,
         })),
-        dashboardUrl: this.getUrl(),
+        localInstanceId: agg.localInstanceId,
       });
       return;
     }
 
+    if (method === "GET" && url.pathname === "/api/overview") {
+      const overview = agg.getOverview(instance ?? "all");
+      this.json(res, { ...overview, dashboardUrl: this.getUrl(instance ?? "all") });
+      return;
+    }
+
     if (method === "GET" && url.pathname === "/api/models") {
-      this.json(res, { models: stats.getAllModelStats() });
+      this.json(res, { models: agg.getModels(instance ?? "all"), instance: instance ?? "all" });
       return;
     }
 
     if (method === "GET" && url.pathname === "/api/strategies") {
-      const strategies = retryEngine.getStrategies();
-      const defaultStrategy =
-        strategies.find((s) => s.isDefault)?.name ?? strategies[0]?.name ?? null;
-      this.json(res, { strategies, defaultStrategy });
+      const targetInstance = instance ?? agg.localInstanceId;
+      const data = agg.getStrategiesForEdit(targetInstance);
+      this.json(res, data);
       return;
     }
 
     if (method === "PUT" && url.pathname.startsWith("/api/strategies/")) {
+      const targetInstance = instance ?? agg.localInstanceId;
+      const edit = agg.getStrategiesForEdit(targetInstance);
+      if (!edit.editable) {
+        this.json(res, { ok: false, error: "只读：请选择本机实例或在本 Gateway 上修改" }, 403);
+        return;
+      }
       const name = decodeURIComponent(url.pathname.replace("/api/strategies/", ""));
       const body = await this.readBody(req);
       const updates = JSON.parse(body || "{}") as Partial<RetryStrategy>;
-      const ok = retryEngine.updateStrategy(name, updates);
-      this.json(res, { ok, name });
+      const engine = agg.getLocalRetryEngine();
+      if (targetInstance !== agg.localInstanceId) {
+        this.json(res, { ok: false, error: "只能修改当前 Gateway 实例的策略" }, 403);
+        return;
+      }
+      const ok = engine.updateStrategy(name, updates);
+      this.json(res, { ok, name, instanceId: agg.localInstanceId });
       return;
     }
 
     if (method === "POST" && url.pathname === "/api/strategies/default") {
+      const targetInstance = instance ?? agg.localInstanceId;
+      const edit = agg.getStrategiesForEdit(targetInstance);
+      if (!edit.editable) {
+        this.json(res, { ok: false, error: "只读实例" }, 403);
+        return;
+      }
       const body = await this.readBody(req);
       const { name } = JSON.parse(body || "{}") as { name?: string };
       if (!name) {
         this.json(res, { ok: false, error: "name required" }, 400);
         return;
       }
-      const strategies = retryEngine.getStrategies();
+      const engine = agg.getLocalRetryEngine();
+      const strategies = engine.getStrategies();
       if (!strategies.some((s) => s.name === name)) {
         this.json(res, { ok: false, error: "strategy not found" }, 404);
         return;
       }
       for (const s of strategies) {
-        retryEngine.updateStrategy(s.name, { isDefault: s.name === name });
+        engine.updateStrategy(s.name, { isDefault: s.name === name });
       }
-      this.json(res, { ok: true, defaultStrategy: name });
+      this.json(res, { ok: true, defaultStrategy: name, instanceId: agg.localInstanceId });
       return;
     }
 
     if (method === "POST" && url.pathname === "/api/strategies/reset") {
-      retryEngine.resetDefaults();
-      this.json(res, { ok: true });
+      if ((instance ?? agg.localInstanceId) !== agg.localInstanceId) {
+        this.json(res, { ok: false, error: "只能重置当前实例" }, 403);
+        return;
+      }
+      agg.getLocalRetryEngine().resetDefaults();
+      this.json(res, { ok: true, instanceId: agg.localInstanceId });
       return;
     }
 

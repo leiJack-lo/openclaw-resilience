@@ -24,6 +24,7 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 - 🔄 **任务恢复** — 任务中断时保存上下文，支持自动恢复
 - 🛠️ **自然语言交互** — 通过 Skill 直接用自然语言查询和管理
 - 🖥️ **Web 监控面板** — 浏览器实时查看错误统计、选择重试方案（5s/60s/5min/1h 刷新）
+- 🔀 **多实例聚合** — 多个 OpenClaw Gateway / workspace 的数据统一在一个面板查看
 
 ## 安装
 
@@ -78,6 +79,27 @@ npm run build
 | `defaultStrategy` | string | `"exponential"` | 默认重试策略类型 |
 | `dashboardEnabled` | boolean | `true` | Gateway 启动时自动开启监控面板 |
 | `dashboardPort` | number | `18765` | 面板 HTTP 端口（仅本机） |
+| `instanceId` | string | gateway-instance-id | 实例 ID（数据隔离目录名） |
+| `instanceLabel` | string | workspace 目录名 | 面板中显示的名称 |
+| `workspacePath` | string | — | 用于自动推断 instanceLabel |
+
+## 多实例
+
+每个 OpenClaw Gateway 使用独立数据目录：
+
+```
+~/.openclaw/plugins/resilience/instances/<instance-id>/
+  meta.json           # 标签、workspace、最后活跃时间
+  stats.json
+  strategies.json
+  logs/
+  tasks/
+  active-retries.json
+```
+
+实例 ID 默认读取 `~/.openclaw/gateway-instance-id`，也可用 `instanceId` 配置或环境变量 `OPENCLAW_RESILIENCE_INSTANCE_ID` 覆盖。
+
+监控面板顶部可选择 **「全部实例（聚合）」** 或单个实例；旧版平铺数据（`~/.openclaw/plugins/resilience/stats.json`）会自动作为 `default (legacy)` 显示。
 
 ## Web 监控面板
 

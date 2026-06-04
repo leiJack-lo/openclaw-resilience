@@ -48,6 +48,17 @@ select {
   border-radius: 6px;
 }
 .meta { font-size: 0.75rem; color: var(--muted); }
+.instance-tag {
+  display: inline-block;
+  font-size: 0.65rem;
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.12);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  margin-right: 0.35rem;
+}
+.strategy.readonly { opacity: 0.85; }
+.strategy.readonly .actions button { pointer-events: none; opacity: 0.5; }
 
 .btn {
   border: 1px solid var(--border);

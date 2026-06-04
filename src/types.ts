@@ -47,6 +47,7 @@ export interface ClassifiedError {
 /** A single log entry for an API call result */
 export interface LogEntry {
   timestamp: string;           // ISO 8601
+  instanceId?: string;
   provider?: string;
   model?: string;
   errorType: ErrorCategory | "success";
@@ -156,4 +157,10 @@ export interface ResilienceConfig {
   dashboardEnabled?: boolean;
   /** Dashboard listen port (localhost only) */
   dashboardPort?: number;
+  /** Instance id override (default: gateway-instance-id or "default") */
+  instanceId?: string;
+  /** Display label in multi-instance dashboard */
+  instanceLabel?: string;
+  /** Workspace path for instance label discovery */
+  workspacePath?: string;
 }

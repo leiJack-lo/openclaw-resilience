@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "leiJack-lo",
   "license": "Apache-2.0",
   "contracts": {
@@ -43,6 +43,18 @@
         "type": "number",
         "description": "Dashboard HTTP port (localhost only)",
         "default": 18765
+      },
+      "instanceId": {
+        "type": "string",
+        "description": "Override instance id for isolated stats (default: gateway-instance-id)"
+      },
+      "instanceLabel": {
+        "type": "string",
+        "description": "Display name in multi-instance dashboard"
+      },
+      "workspacePath": {
+        "type": "string",
+        "description": "Workspace path used for instance label"
       }
     },
     "additionalProperties": false

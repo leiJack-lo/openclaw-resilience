@@ -60,6 +60,8 @@ export class RetryEngine {
   private strategiesPath: string;
   private strategies: RetryStrategy[] = [];
   private activeRetries: Map<string, RetryState> = new Map();
+  /** Called when active retry map changes (for multi-instance dashboard persistence). */
+  onActiveRetriesChanged?: (states: Map<string, RetryState>) => void;
 
   constructor(strategiesPath?: string) {
     this.strategiesPath = strategiesPath ?? DEFAULT_STRATEGIES_PATH;
@@ -145,6 +147,7 @@ export class RetryEngine {
 
     if (attempt > strategy.maxRetries) {
       this.activeRetries.delete(operationKey);
+      this.onActiveRetriesChanged?.(this.activeRetries);
       return { retry: false, delayMs: -1, attempt };
     }
 
@@ -170,6 +173,7 @@ export class RetryEngine {
       nextRetryAt,
       lastError: error,
     });
+    this.onActiveRetriesChanged?.(this.activeRetries);
 
     return { retry: true, delayMs, attempt };
   }
@@ -203,6 +207,7 @@ export class RetryEngine {
    */
   complete(operationKey: string): void {
     this.activeRetries.delete(operationKey);
+    this.onActiveRetriesChanged?.(this.activeRetries);
   }
 
   /**

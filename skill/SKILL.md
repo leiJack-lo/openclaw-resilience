@@ -37,6 +37,8 @@ Open the live web dashboard in your browser for real-time error stats and retry 
 
 The dashboard starts automatically when OpenClaw Gateway starts (unless `dashboardEnabled: false`).
 
+**Multi-instance:** Use the instance dropdown to view **all instances (aggregated)** or a single Gateway. Each instance stores data under `~/.openclaw/plugins/resilience/instances/<id>/`. Strategy edits apply only to the **local** Gateway instance.
+
 ### resilience_stats
 
 View API error statistics by time period or model.
@@ -114,15 +116,14 @@ Generate detailed error reports.
 
 ## Data Storage
 
-All data is stored in `~/.openclaw/plugins/resilience/`:
+Per-instance data: `~/.openclaw/plugins/resilience/instances/<instance-id>/` (stats, logs, strategies, tasks). Legacy root layout is still read as `default`.
 
 ```
-~/.openclaw/plugins/resilience/
-├── logs/           # JSONL daily log files
-│   ├── 2026-06-01.jsonl
-│   ├── 2026-06-02.jsonl
-│   └── 2026-06-03.jsonl
-├── stats.json      # Aggregated statistics
-├── strategies.json # Retry strategy configurations
-└── tasks/          # Recoverable task state files
+~/.openclaw/plugins/resilience/instances/<instance-id>/
+├── meta.json
+├── stats.json
+├── strategies.json
+├── active-retries.json
+├── logs/YYYY-MM-DD.jsonl
+└── tasks/
 ```
