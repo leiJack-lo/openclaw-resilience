@@ -37,6 +37,21 @@ Open the live web dashboard in your browser for real-time error stats and retry 
 
 The dashboard starts automatically when OpenClaw Gateway starts (unless `dashboardEnabled: false`).
 
+**Configuration** lives in `~/.openclaw/openclaw.json` under `plugins.entries.resilience.config` (not only `api.pluginConfig` at hook time). Example:
+
+```json
+"resilience": {
+  "enabled": true,
+  "config": {
+    "dashboardPort": 18765,
+    "dashboardEnabled": true,
+    "instanceLabel": "my-workspace"
+  }
+}
+```
+
+At `gateway_start`, config is read from `ctx.config` + `ctx.workspaceDir`.
+
 **Multi-instance:** Use the instance dropdown to view **all instances (aggregated)** or a single Gateway. Each instance stores data under `~/.openclaw/plugins/resilience/instances/<id>/`. Strategy edits apply only to the **local** Gateway instance.
 
 ### resilience_stats

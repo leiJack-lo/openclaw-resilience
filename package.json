@@ -17,7 +17,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "verify:dashboard": "npm run build && node scripts/verify-dashboard.mjs"
+    "verify:dashboard": "npm run build && node scripts/verify-dashboard.mjs",
+    "verify:config": "npm run build && node scripts/verify-plugin-config.mjs"
   },
   "openclaw": {
     "extensions": [

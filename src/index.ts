@@ -11,35 +11,18 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Type } from "typebox";
 import { exec } from "node:child_process";
 import { classifyError, categoryLabel } from "./error-classifier.js";
-import { ResilienceLogger } from "./logger.js";
-import { StatsCollector } from "./stats-collector.js";
-import { RetryEngine } from "./retry-engine.js";
-import { TaskRecovery } from "./task-recovery.js";
-import { DashboardServer } from "./dashboard-server.js";
-import { InstanceAggregator } from "./instance-aggregator.js";
 import {
-  resolveInstanceContext,
-  touchInstanceMeta,
-  migrateLegacyToDefault,
-} from "./instance-registry.js";
-import type { InstancePaths } from "./instance-registry.js";
+  bootstrapResilience,
+  getRuntime,
+  requireRuntime,
+  runGatewayStartup,
+  shutdownResilience,
+} from "./bootstrap.js";
 import type {
   LogEntry,
   ErrorCategory,
-  ResilienceConfig,
   ClassifiedError,
 } from "./types.js";
-
-// ─── Module State ───────────────────────────────────────────────────────────
-
-let instancePaths: InstancePaths;
-let logger: ResilienceLogger;
-let stats: StatsCollector;
-let retryEngine: RetryEngine;
-let taskRecovery: TaskRecovery;
-let instanceAggregator: InstanceAggregator;
-let dashboardServer: DashboardServer | null = null;
-let pluginConfig: ResilienceConfig = {};
 
 function openInBrowser(url: string): void {
   const cmd =
@@ -51,15 +34,16 @@ function openInBrowser(url: string): void {
   exec(cmd);
 }
 
-async function ensureDashboardRunning(): Promise<DashboardServer> {
-  const port = pluginConfig.dashboardPort ?? 18765;
-  if (!dashboardServer) {
-    dashboardServer = new DashboardServer(instanceAggregator, port);
+async function ensureDashboardRunning() {
+  const rt = getRuntime();
+  const cfg = rt?.pluginConfig ?? {};
+  const sources = { pluginConfig: cfg };
+  await bootstrapResilience(sources, { startDashboard: true });
+  const dash = requireRuntime().dashboardServer;
+  if (!dash?.isRunning()) {
+    throw new Error("[resilience] Dashboard failed to start");
   }
-  if (!dashboardServer.isRunning()) {
-    await dashboardServer.start();
-  }
-  return dashboardServer;
+  return dash;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -190,8 +174,12 @@ function processCallResult(params: {
   sessionId?: string;
   runId?: string;
 }): ClassifiedError | null {
+  const rt = getRuntime();
+  if (!rt) return null;
+
   const { provider, model, error, httpStatus, durationMs, sessionId, runId } =
     params;
+  const { logger, stats, retryEngine, instancePaths } = rt;
 
   if (error) {
     const classified = classifyError(error, { provider, model, httpStatus });
@@ -257,31 +245,16 @@ export default definePluginEntry({
     "LLM API error tracking, classification, retry, and task recovery",
 
   register(api) {
-    // Read plugin config
-    pluginConfig = (api.pluginConfig as ResilienceConfig) ?? {};
-
-    // ─── Initialize Subsystems (per OpenClaw instance) ────────────────
-
-    instancePaths = resolveInstanceContext(pluginConfig);
-    const logDir = pluginConfig.logDir ?? instancePaths.logDir;
-
-    logger = new ResilienceLogger(logDir);
-    stats = new StatsCollector(instancePaths.statsPath);
-    retryEngine = new RetryEngine(instancePaths.strategiesPath);
-    taskRecovery = new TaskRecovery(instancePaths.tasksDir);
-    instanceAggregator = new InstanceAggregator(instancePaths);
-
-    retryEngine.onActiveRetriesChanged = (states) => {
-      instanceAggregator.persistActiveRetries(states);
-    };
-
-    touchInstanceMeta(instancePaths, {
-      workspacePath: pluginConfig.workspacePath ?? process.cwd(),
+    // Config: api.pluginConfig + plugins.entries.resilience.config from api.config
+    void bootstrapResilience(
+      {
+        pluginConfig: api.pluginConfig,
+        openClawConfig: api.config,
+      },
+      { logger: api.logger }
+    ).catch((err) => {
+      api.logger.warn(`[resilience] Register bootstrap failed: ${err}`);
     });
-
-    api.logger.info(
-      `[resilience] Instance "${instancePaths.label}" (${instancePaths.id}) initialized`
-    );
 
     // ─── Tool: resilience_stats ───────────────────────────────────────
 
@@ -300,6 +273,7 @@ export default definePluginEntry({
         ),
       }),
       async execute(_toolCallId, params) {
+        const { stats } = requireRuntime();
         const query = ((params as Record<string, unknown>).query as string ?? "").toLowerCase();
 
         // Model-specific query
@@ -410,6 +384,7 @@ export default definePluginEntry({
         ),
       }),
       async execute(_toolCallId, params) {
+        const { retryEngine } = requireRuntime();
         const p = params as Record<string, unknown>;
         const action = (p.action as string) ?? "list";
 
@@ -566,8 +541,9 @@ export default definePluginEntry({
             };
           }
           case "status": {
-            const port = pluginConfig.dashboardPort ?? 18765;
-            const running = dashboardServer?.isRunning() ?? false;
+            const rt = getRuntime();
+            const port = rt?.pluginConfig.dashboardPort ?? 18765;
+            const running = rt?.dashboardServer?.isRunning() ?? false;
             const url = `http://127.0.0.1:${port}/`;
             return {
               content: [
@@ -582,8 +558,9 @@ export default definePluginEntry({
             };
           }
           case "stop": {
-            if (dashboardServer?.isRunning()) {
-              await dashboardServer.stop();
+            const dash = getRuntime()?.dashboardServer;
+            if (dash?.isRunning()) {
+              await dash.stop();
             }
             return {
               content: [{ type: "text", text: "监控面板已停止。" }],
@@ -619,6 +596,7 @@ export default definePluginEntry({
         ),
       }),
       async execute(_toolCallId, params) {
+        const { logger, stats, retryEngine, taskRecovery } = requireRuntime();
         const p = params as Record<string, unknown>;
         const reportType = (p.reportType as string) ?? "daily";
         const target = p.target as string | undefined;
@@ -790,7 +768,7 @@ export default definePluginEntry({
       // If error is retryable, check retry strategy
       if (classified?.retryable) {
         const opKey = `${ctx.sessionKey ?? "unknown"}-${runId ?? "unknown"}-${Date.now()}`;
-        const retryResult = retryEngine.shouldRetry(opKey, classified);
+        const retryResult = getRuntime()!.retryEngine.shouldRetry(opKey, classified);
         if (retryResult.retry) {
           api.logger.info(
             `[resilience] Scheduling retry #${retryResult.attempt} for ${classified.category} in ${formatMs(retryResult.delayMs)}`
@@ -814,7 +792,7 @@ export default definePluginEntry({
 
         // Check for recoverable tasks in this session
         if (ctx.sessionKey) {
-          const failedTasks = taskRecovery.getRecoverableTasks();
+          const failedTasks = getRuntime()?.taskRecovery.getRecoverableTasks() ?? [];
           for (const task of failedTasks) {
             if (task.sessionKey === ctx.sessionKey) {
               api.logger.info(
@@ -828,31 +806,19 @@ export default definePluginEntry({
 
     /**
      * Hook: gateway_start
-     * Initialize on gateway startup.
+     * Authoritative config from ctx.config (api.pluginConfig is not refreshed here).
      */
-    api.on("gateway_start", async () => {
-      migrateLegacyToDefault();
-      touchInstanceMeta(instancePaths, {
-        workspacePath: pluginConfig.workspacePath ?? process.cwd(),
-      });
-
-      // Cleanup old data
-      logger.cleanup(pluginConfig.statsRetentionDays ?? 90);
-      stats.cleanup(7);
-      taskRecovery.cleanup(7 * 24 * 60 * 60 * 1000);
-
-      if (pluginConfig.dashboardEnabled !== false) {
-        try {
-          await ensureDashboardRunning();
-          api.logger.info(
-            `[resilience] Dashboard at ${dashboardServer!.getUrl()}`
-          );
-        } catch (err) {
-          api.logger.warn(`[resilience] Dashboard failed to start: ${err}`);
-        }
-      }
-
-      api.logger.info("[resilience] Plugin started, data cleaned up");
+    api.on("gateway_start", async (event, ctx) => {
+      const hookCtx = (event as { context?: { pluginConfig?: unknown } }).context;
+      await runGatewayStartup(
+        {
+          pluginConfig: api.pluginConfig,
+          openClawConfig: ctx.config ?? api.config,
+          hookContextConfig: hookCtx?.pluginConfig,
+          workspaceDir: ctx.workspaceDir,
+        },
+        api.logger
+      );
     });
 
     /**
@@ -860,10 +826,7 @@ export default definePluginEntry({
      * Flush and cleanup on gateway shutdown.
      */
     api.on("gateway_stop", async () => {
-      if (dashboardServer?.isRunning()) {
-        await dashboardServer.stop();
-      }
-      logger.destroy();
+      await shutdownResilience();
       api.logger.info("[resilience] Plugin stopped, logs flushed");
     });
 
