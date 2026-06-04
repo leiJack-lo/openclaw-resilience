@@ -1,6 +1,6 @@
 {
   "name": "@openclaw/resilience",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LLM API error tracking, classification, retry, and task recovery plugin for OpenClaw",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,7 +16,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "verify:dashboard": "npm run build && node scripts/verify-dashboard.mjs"
   },
   "openclaw": {
     "extensions": [

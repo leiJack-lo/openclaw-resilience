@@ -2,11 +2,16 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "leiJack-lo",
   "license": "Apache-2.0",
   "contracts": {
-    "tools": ["resilience_stats", "resilience_strategies", "resilience_report"]
+    "tools": [
+      "resilience_stats",
+      "resilience_strategies",
+      "resilience_report",
+      "resilience_dashboard"
+    ]
   },
   "activation": {
     "onStartup": true
@@ -28,6 +33,16 @@
         "enum": ["fixed", "exponential", "custom"],
         "description": "Default retry strategy type",
         "default": "exponential"
+      },
+      "dashboardEnabled": {
+        "type": "boolean",
+        "description": "Start web dashboard when gateway starts",
+        "default": true
+      },
+      "dashboardPort": {
+        "type": "number",
+        "description": "Dashboard HTTP port (localhost only)",
+        "default": 18765
       }
     },
     "additionalProperties": false

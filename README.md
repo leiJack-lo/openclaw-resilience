@@ -23,6 +23,7 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 - 🔁 **灵活重试** — 支持固定间隔、指数退避、自定义时间表三种策略
 - 🔄 **任务恢复** — 任务中断时保存上下文，支持自动恢复
 - 🛠️ **自然语言交互** — 通过 Skill 直接用自然语言查询和管理
+- 🖥️ **Web 监控面板** — 浏览器实时查看错误统计、选择重试方案（5s/60s/5min/1h 刷新）
 
 ## 安装
 
@@ -75,6 +76,25 @@ npm run build
 | `logDir` | string | `~/.openclaw/plugins/resilience/logs` | 日志存储目录 |
 | `statsRetentionDays` | number | `90` | 统计数据保留天数 |
 | `defaultStrategy` | string | `"exponential"` | 默认重试策略类型 |
+| `dashboardEnabled` | boolean | `true` | Gateway 启动时自动开启监控面板 |
+| `dashboardPort` | number | `18765` | 面板 HTTP 端口（仅本机） |
+
+## Web 监控面板
+
+Gateway 启动后默认在 **http://127.0.0.1:18765/** 提供监控页面，也可通过自然语言打开：
+
+```
+打开错误统计页面
+打开监控面板
+打开 resilience 面板
+```
+
+面板功能：
+
+- 今日/本小时错误概览、模型统计表、最近错误列表
+- 活跃重试任务状态
+- 重试策略卡片：设为默认、调整最大重试次数、恢复默认
+- 自动刷新：**5 秒** / **60 秒** / **5 分钟** / **1 小时** / 关闭
 
 ## 使用
 
@@ -97,11 +117,14 @@ npm run build
 
 # 生成日报
 "生成今日错误日报"
+
+# 打开 Web 监控面板
+"打开错误统计页面"
 ```
 
 ### 通过工具调用
 
-插件注册了 3 个工具：
+插件注册了 4 个工具：
 
 #### `resilience_stats`
 
@@ -162,6 +185,19 @@ resilience_report({ reportType: "recovery" })
 
 // 完整报告
 resilience_report({ reportType: "full" })
+```
+
+#### `resilience_dashboard`
+
+```typescript
+// 启动面板并在浏览器打开
+resilience_dashboard({ action: "open" })
+
+// 查看运行状态
+resilience_dashboard({ action: "status" })
+
+// 停止面板服务
+resilience_dashboard({ action: "stop" })
 ```
 
 ### Hook 自动拦截

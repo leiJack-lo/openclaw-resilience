@@ -2,11 +2,16 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "leiJack-lo",
   "license": "Apache-2.0",
   "plugin": "resilience",
-  "tools": ["resilience_stats", "resilience_strategies", "resilience_report"],
+  "tools": [
+    "resilience_stats",
+    "resilience_strategies",
+    "resilience_report",
+    "resilience_dashboard"
+  ],
   "naturalLanguage": {
     "examples": [
       {
@@ -33,6 +38,26 @@
         "intent": "生成今日错误日报",
         "tool": "resilience_report",
         "params": { "reportType": "daily" }
+      },
+      {
+        "intent": "打开错误统计页面",
+        "tool": "resilience_dashboard",
+        "params": { "action": "open" }
+      },
+      {
+        "intent": "打开监控面板",
+        "tool": "resilience_dashboard",
+        "params": { "action": "open" }
+      },
+      {
+        "intent": "打开 resilience 面板",
+        "tool": "resilience_dashboard",
+        "params": { "action": "open" }
+      },
+      {
+        "intent": "打开重试策略网页",
+        "tool": "resilience_dashboard",
+        "params": { "action": "open" }
       }
     ]
   }

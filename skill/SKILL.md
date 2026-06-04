@@ -14,6 +14,29 @@ This skill provides visibility into API call health and automated retry manageme
 
 ## Tools
 
+### resilience_dashboard
+
+Open the live web dashboard in your browser for real-time error stats and retry strategy management.
+
+**Parameters:**
+- `action`: `"open"` (default) | `"status"` | `"stop"`
+
+**Features:**
+- Live error overview (today / hour / active retries)
+- Model breakdown table
+- Recent errors feed
+- Retry strategy cards — set default, adjust max retries
+- Auto-refresh: **5s**, **60s**, **5min**, **1h**, or off
+
+**URL:** `http://127.0.0.1:18765/` (default port, configurable via `dashboardPort`)
+
+**Voice / natural language examples:**
+- "打开错误统计页面" → `resilience_dashboard({ action: "open" })`
+- "打开监控面板" → `resilience_dashboard({ action: "open" })`
+- "打开 resilience 面板" → `resilience_dashboard({ action: "open" })`
+
+The dashboard starts automatically when OpenClaw Gateway starts (unless `dashboardEnabled: false`).
+
 ### resilience_stats
 
 View API error statistics by time period or model.

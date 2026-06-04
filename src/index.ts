@@ -9,11 +9,13 @@
 
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Type } from "typebox";
+import { exec } from "node:child_process";
 import { classifyError, categoryLabel } from "./error-classifier.js";
 import { ResilienceLogger } from "./logger.js";
 import { StatsCollector } from "./stats-collector.js";
 import { RetryEngine } from "./retry-engine.js";
 import { TaskRecovery } from "./task-recovery.js";
+import { DashboardServer } from "./dashboard-server.js";
 import type {
   LogEntry,
   ErrorCategory,
@@ -27,7 +29,32 @@ let logger: ResilienceLogger;
 let stats: StatsCollector;
 let retryEngine: RetryEngine;
 let taskRecovery: TaskRecovery;
+let dashboardServer: DashboardServer | null = null;
 let pluginConfig: ResilienceConfig = {};
+
+function openInBrowser(url: string): void {
+  const cmd =
+    process.platform === "darwin"
+      ? `open "${url}"`
+      : process.platform === "win32"
+        ? `start "" "${url}"`
+        : `xdg-open "${url}"`;
+  exec(cmd);
+}
+
+async function ensureDashboardRunning(): Promise<DashboardServer> {
+  const port = pluginConfig.dashboardPort ?? 18765;
+  if (!dashboardServer) {
+    dashboardServer = new DashboardServer(
+      { stats, retryEngine, logger, taskRecovery },
+      port
+    );
+  }
+  if (!dashboardServer.isRunning()) {
+    await dashboardServer.start();
+  }
+  return dashboardServer;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -481,6 +508,75 @@ export default definePluginEntry({
       },
     });
 
+    // ─── Tool: resilience_dashboard ─────────────────────────────────
+
+    api.registerTool({
+      name: "resilience_dashboard",
+      label: "Resilience Dashboard",
+      description:
+        "Open or manage the Resilience web dashboard for live error stats " +
+        "and retry strategy selection. Use when the user asks to open the " +
+        "monitoring page or view stats in a browser.",
+      parameters: Type.Object({
+        action: Type.Optional(
+          Type.String({
+            description: '"open" (default) — start server and open browser; "status"; "stop"',
+          })
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const action =
+          ((params as Record<string, unknown>).action as string) ?? "open";
+
+        switch (action) {
+          case "open": {
+            const dash = await ensureDashboardRunning();
+            const url = dash.getUrl();
+            openInBrowser(url);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `已打开 Resilience 监控面板：${url}\n可在页面中选择自动刷新间隔（5s / 60s / 5min / 1h）并管理重试策略。`,
+                },
+              ],
+              details: { url, running: true },
+            };
+          }
+          case "status": {
+            const port = pluginConfig.dashboardPort ?? 18765;
+            const running = dashboardServer?.isRunning() ?? false;
+            const url = `http://127.0.0.1:${port}/`;
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: running
+                    ? `监控面板运行中：${url}`
+                    : "监控面板未启动。可说「打开错误统计页面」启动。",
+                },
+              ],
+              details: { url, running },
+            };
+          }
+          case "stop": {
+            if (dashboardServer?.isRunning()) {
+              await dashboardServer.stop();
+            }
+            return {
+              content: [{ type: "text", text: "监控面板已停止。" }],
+              details: { running: false },
+            };
+          }
+          default:
+            return {
+              content: [{ type: "text", text: `Unknown action: ${action}` }],
+              details: null,
+            };
+        }
+      },
+    });
+
     // ─── Tool: resilience_report ──────────────────────────────────────
 
     api.registerTool({
@@ -717,6 +813,18 @@ export default definePluginEntry({
       logger.cleanup(pluginConfig.statsRetentionDays ?? 90);
       stats.cleanup(7);
       taskRecovery.cleanup(7 * 24 * 60 * 60 * 1000);
+
+      if (pluginConfig.dashboardEnabled !== false) {
+        try {
+          await ensureDashboardRunning();
+          api.logger.info(
+            `[resilience] Dashboard at ${dashboardServer!.getUrl()}`
+          );
+        } catch (err) {
+          api.logger.warn(`[resilience] Dashboard failed to start: ${err}`);
+        }
+      }
+
       api.logger.info("[resilience] Plugin started, data cleaned up");
     });
 
@@ -725,6 +833,9 @@ export default definePluginEntry({
      * Flush and cleanup on gateway shutdown.
      */
     api.on("gateway_stop", async () => {
+      if (dashboardServer?.isRunning()) {
+        await dashboardServer.stop();
+      }
       logger.destroy();
       api.logger.info("[resilience] Plugin stopped, logs flushed");
     });

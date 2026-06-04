@@ -112,6 +112,8 @@ export interface RetryStrategy {
   cooldownMs: number;
   /** Optional: model-specific override */
   models?: string[];
+  /** Preferred default when multiple strategies match */
+  isDefault?: boolean;
 }
 
 /** Active retry state for a pending operation */
@@ -150,4 +152,8 @@ export interface ResilienceConfig {
   logDir?: string;
   statsRetentionDays?: number;
   defaultStrategy?: RetryStrategyType;
+  /** Enable web dashboard on gateway start */
+  dashboardEnabled?: boolean;
+  /** Dashboard listen port (localhost only) */
+  dashboardPort?: number;
 }

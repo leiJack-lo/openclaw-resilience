@@ -34,6 +34,7 @@ const DEFAULT_STRATEGIES: RetryStrategy[] = [
     intervals: [60_000, 180_000, 300_000, 600_000, 900_000], // 1m, 3m, 5m, 10m, 15m
     retryOn: ["rate_limit", "server_overload", "timeout", "network_error"],
     cooldownMs: 10_000,
+    isDefault: true,
   },
   {
     name: "rate-limit-fixed",
@@ -118,8 +119,12 @@ export class RetryEngine {
     );
     if (globalStrategy) return globalStrategy;
 
-    // 3. Find any strategy that handles this error type
-    return this.strategies.find((s) => s.retryOn.includes(error.category)) ?? null;
+    // 3. Find any strategy that handles this error type (prefer isDefault)
+    const matches = this.strategies.filter((s) =>
+      s.retryOn.includes(error.category)
+    );
+    if (matches.length === 0) return null;
+    return matches.find((s) => s.isDefault) ?? matches[0];
   }
 
   /**
