@@ -1,4 +1,4 @@
-# @openclaw/resilience
+# @leiJack-lo/resilience
 
 LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 
@@ -13,7 +13,7 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 - 🔁 **任务中断** — 运行中的任务突然失败需要恢复
 - ⚙️ **策略不一** — 不同模型、不同场景需要不同的重试策略
 
-`@openclaw/resilience` 插件为 OpenClaw 提供完整的 API 健康监控和自动重试能力。
+`@leiJack-lo/resilience` 插件为 OpenClaw 提供完整的 API 健康监控和自动重试能力。
 
 ## 功能
 
@@ -28,7 +28,20 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 
 ## 安装
 
-### 作为 OpenClaw 插件
+### 从 ClawHub 安装（推荐）
+
+```bash
+clawhub login
+openclaw plugins install clawhub:@leiJack-lo/resilience --dangerously-force-unsafe-install
+openclaw skills install leiJack-lo/resilience-monitor   # 可选：自然语言话术
+openclaw gateway restart
+```
+
+在 `~/.openclaw/openclaw.json` 的 `plugins.entries.resilience` 下增加 `config`（面板端口等），见下方「配置」。
+
+> 安装时若提示 dangerous code：插件会用 `open` 打开本机监控面板，属预期行为。
+
+### 作为 OpenClaw 插件（Git 源码）
 
 ```bash
 # 1. 克隆到 OpenClaw 插件目录
