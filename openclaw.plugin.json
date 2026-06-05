@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "author": "leiJack-lo",
   "license": "Apache-2.0",
   "contracts": {

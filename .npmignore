@@ -1,0 +1,32 @@
+# Development and source (dist is prebuilt for runtime)
+src/
+tsconfig.json
+*.tsbuildinfo
+
+# Local state and secrets
+.openclaw/
+.env*
+*.log
+secrets*
+*.tokens
+
+# Dev-only docs and scripts (keep root README/CHANGELOG/LICENSE for users)
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TASK.md
+TOOLS.md
+USER.md
+scripts/
+
+# Test and node
+node_modules/
+dist/**/*.map
+coverage/
+.nyc_output/
+
+# OS
+.DS_Store
+Thumbs.db

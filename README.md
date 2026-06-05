@@ -32,14 +32,24 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 
 ```bash
 clawhub login
+
+# 1. 先装插件（必须加 --dangerously-force-unsafe-install）
+#    原因见下文 "为什么需要 dangerous 标志"
 openclaw plugins install clawhub:@leiJack-lo/resilience --dangerously-force-unsafe-install
-openclaw skills install leiJack-lo/resilience-monitor   # 可选：自然语言话术
+
+# 2. 再装配套 Skill（强烈推荐，提供中文自然语言话术）
+openclaw skills install resilience-monitor
+
+# 3. 重启 Gateway（插件的 hooks 和工具注册必须重启后才生效）
 openclaw gateway restart
 ```
 
+**重要顺序**：必须先插件 → 再 Skill → 再 restart。  
+只装 Skill 不装插件的话，agent 拿到的只是描述，实际工具调用会失败，自动错误跟踪也不会工作。
+
 在 `~/.openclaw/openclaw.json` 的 `plugins.entries.resilience` 下增加 `config`（面板端口等），见下方「配置」。
 
-> 安装时若提示 dangerous code：插件会用 `open` 打开本机监控面板，属预期行为。
+> 安装时若提示 dangerous code：插件会用 `open` 打开本机监控面板 + 启动本地 HTTP Dashboard + 注册 model_call_ended hook，属**完全预期行为**，不是恶意代码。ClawHub 因此把插件标为 suspicious（正常现象）。
 
 ### 作为 OpenClaw 插件（Git 源码）
 
@@ -133,9 +143,11 @@ Gateway 启动后默认在 **http://127.0.0.1:18765/** 提供监控页面，也�
 
 ## 使用
 
-### 通过 Skill 自然语言交互
+### 通过 Skill 自然语言交互（推荐）
 
-安装插件后，以下 Skill 命令自动可用：
+**前提**：必须已经按上面的顺序装好插件 + Skill 并重启过 gateway。
+
+安装插件后，以下 Skill 命令自动可用（Skill 只是话术层，底层还是插件提供的工具）：
 
 ```
 # 查看今天报错统计
@@ -365,6 +377,21 @@ npm run clean
 ## 许可证
 
 Apache License 2.0. 详见 [LICENSE](./LICENSE)。
+
+## 安全与信任
+
+本插件设计为**最小权限、本地只读监控**工具：
+
+- 使用经过审计的 `open` 包（而非原始 `child_process.exec`）打开本地浏览器查看面板。
+- 本地 HTTP Dashboard（默认 127.0.0.1:18765）仅服务静态文件 + 只读 JSON API，无外部访问、无写权限到系统。
+- 所有持久化数据仅在 `~/.openclaw/plugins/resilience/instances/<id>/` 下（用户可随时删除）。
+- Hooks 只观察 `model_call_ended` 和 `agent_end` 用于错误分类/重试/恢复，不修改请求内容。
+- 源码完全开源 + ClawHub source-linked 验证。
+- 发布时通过 ClawHub 自动化安全扫描（VirusTotal + agentic risk checks）。当前因需要本地执行（浏览器 + 服务器）标记为 suspicious（这是监控类插件的常见情况，非恶意）。我们持续优化以争取 benign 状态。
+
+如果扫描仍提示，请查看 [ClawHub 安全指南](https://clawhub.ai) 或联系 security@openclaw.ai 提供本项目链接说明用途。
+
+安装时 `--dangerously-force-unsafe-install` 是因为插件声明 "executes code"（用于安全打开本地 URL），属于预期。
 
 ## 相关
 

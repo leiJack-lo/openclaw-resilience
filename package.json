@@ -1,6 +1,6 @@
 {
   "name": "@leiJack-lo/resilience",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "LLM API error tracking, classification, retry, and task recovery plugin for OpenClaw",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,6 +33,16 @@
       "pluginSdkVersion": "2026.5.18"
     }
   },
+  "files": [
+    "dist/",
+    "skill/",
+    "config/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "package.json"
+  ],
   "keywords": [
     "openclaw",
     "plugin",
@@ -44,6 +54,7 @@
   "author": "leiJack-lo",
   "license": "Apache-2.0",
   "dependencies": {
+    "open": "^10.2.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {

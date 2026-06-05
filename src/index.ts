@@ -9,7 +9,7 @@
 
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Type } from "typebox";
-import { exec } from "node:child_process";
+import open from "open";
 import { classifyError, categoryLabel } from "./error-classifier.js";
 import {
   bootstrapResilience,
@@ -24,14 +24,21 @@ import type {
   ClassifiedError,
 } from "./types.js";
 
-function openInBrowser(url: string): void {
-  const cmd =
-    process.platform === "darwin"
-      ? `open "${url}"`
-      : process.platform === "win32"
-        ? `start "" "${url}"`
-        : `xdg-open "${url}"`;
-  exec(cmd);
+/**
+ * Open URL in the user's default browser.
+ * Uses the 'open' package (safer, cross-platform, well-audited) instead of raw
+ * child_process.exec. This helps with ClawHub security scans by avoiding
+ * direct shell command execution for a common, benign operation (opening the
+ * local monitoring dashboard).
+ */
+async function openInBrowser(url: string): Promise<void> {
+  try {
+    // wait: false so we don't block on the browser process
+    await open(url, { wait: false });
+  } catch (err) {
+    // Non-fatal: user can copy the URL manually from the tool response
+    console.warn("[resilience] Could not auto-open browser for", url, err);
+  }
 }
 
 async function ensureDashboardRunning() {
@@ -529,7 +536,7 @@ export default definePluginEntry({
           case "open": {
             const dash = await ensureDashboardRunning();
             const url = dash.getUrl();
-            openInBrowser(url);
+            await openInBrowser(url);
             return {
               content: [
                 {
