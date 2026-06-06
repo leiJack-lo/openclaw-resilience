@@ -16,7 +16,7 @@
   "activation": {
     "onStartup": true,
     "onCapabilities": ["hook", "tool"]
-  }
+  },
   "configSchema": {
     "type": "object",
     "properties": {
