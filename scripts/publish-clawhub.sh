@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${1:-0.3.2}"
+VERSION="${1:-0.3.3}"
 CHANGELOG="${2:-scanStatus improvement: replaced raw child_process.exec with audited 'open' package + files whitelist + .npmignore for cleaner artifact; added Security & Trust section to README explaining privileges and scan flag; version 0.3.2 with synced docs. Goal: reach benign scan for easier adoption.}"
 
 if ! clawhub whoami >/dev/null 2>&1; then

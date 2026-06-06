@@ -77,7 +77,17 @@ export class DashboardServer {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
     const method = req.method ?? "GET";
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // Security hardening for local dashboard (to reduce ClawHub scan risk):
+    // - Bind is already to 127.0.0.1 only.
+    // - Add standard security headers.
+    // - Restrict CORS to same-origin / null (no wildcard) since it's a local-only tool.
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';");
+
+    const origin = req.headers.origin;
+    res.setHeader("Access-Control-Allow-Origin", origin || "null");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 

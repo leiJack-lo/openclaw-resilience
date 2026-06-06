@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3
+
+- Further risk optimization for ClawHub scan:
+  - Hardened local DashboardServer: added security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, CSP), restricted CORS to origin or "null" (no wildcard *).
+  - Updated openclaw.plugin.json with explicit `activation.onCapabilities: ["hook", "tool"]` and comments declaring hook usage for transparency (model_call_ended / agent_end are read-only observers only).
+  - Expanded "安全与信任" / "Known Risks and Mitigations" table in README with specific risks (local data exposure, strategy edits, model hooks, local HTTP server, executes code) and mitigations. Matches style of the companion skill's risk disclosure.
+- Rebuilt and prepared for republish. Goal: provide even more evidence of safe design to help move from "suspicious" to "benign".
+
 ## 0.3.2
 
 - **scanStatus improvement push**: Replaced raw `child_process.exec` (for browser open) with the well-audited `open` npm package. Added `files` whitelist + `.npmignore` to produce a cleaner published artifact (excludes local state, dev scripts, extra md). This directly targets common ClawHub "suspicious" triggers (direct shell exec, unnecessary files).

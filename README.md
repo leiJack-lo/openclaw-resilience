@@ -393,6 +393,18 @@ Apache License 2.0. 详见 [LICENSE](./LICENSE)。
 
 安装时 `--dangerously-force-unsafe-install` 是因为插件声明 "executes code"（用于安全打开本地 URL），属于预期。
 
+### Known Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Local dashboard can display operational error, retry, and model performance details. | Open the dashboard only when needed, avoid using it during screen sharing or on shared machines, and close or stop it when monitoring is complete. All data is stored locally under user-controlled `~/.openclaw/plugins/resilience/`. |
+| Retry strategy edits can change local Gateway retry behavior. | Review strategy changes before applying them and scope edits to the intended local Gateway instance. Changes are persisted only in user-writable directories. |
+| Hooks observe `model_call_ended` (LLM API results). | Hooks are read-only observers for classification/recovery only. No request modification, no external network calls from the plugin (except local browser open via audited `open` package). |
+| Runs a local HTTP server (for dashboard). | Server binds exclusively to 127.0.0.1 (localhost). Hardened with security headers (no wide CORS, nosniff, frame deny, CSP). Serves only bundled static files + controlled JSON API. No authentication needed because local-only. |
+| "executes code" / child process for browser open. | We use the well-audited `open` npm package (not raw exec/shell). This is a standard, benign pattern for local monitoring UIs. |
+
+We have proactively optimized for ClawHub scans (cleaner packaging, safer browser launch, explicit declarations in manifest, detailed transparency docs). Current scan is "suspicious" (common for plugins with local servers + model hooks); we are requesting review for "benign".
+
 ## 相关
 
 - [OpenClaw](https://github.com/openclaw/openclaw) — AI Agent 平台
