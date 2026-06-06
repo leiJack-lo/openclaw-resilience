@@ -16,10 +16,7 @@
   "activation": {
     "onStartup": true,
     "onCapabilities": ["hook", "tool"]
-  },
-  // Declared for ClawHub/scan transparency: we observe model_call_ended and agent_end
-  // only for local error classification, retry logic, and recovery. No exfiltration.
-  // All data stays in user-controlled ~/.openclaw/plugins/resilience/ dirs.
+  }
   "configSchema": {
     "type": "object",
     "properties": {
