@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+
+- chore: switch license from Apache-2.0 to MIT (more permissive for community adoption)
+- Published 0.3.4 to ClawHub (plugin + skill) to sync with GitHub
+
 ## 0.3.3
 
 - Further risk optimization for ClawHub scan:

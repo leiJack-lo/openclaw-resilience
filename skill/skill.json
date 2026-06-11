@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery. REQUIRES the @leiJack-lo/resilience plugin (install plugin first, then this skill). Provides Chinese natural language interface only; core tools + hooks + dashboard server come from the plugin.",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": "leiJack-lo",
   "license": "MIT",
   "plugin": "resilience",

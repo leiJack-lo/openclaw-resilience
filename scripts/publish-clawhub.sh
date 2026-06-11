@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${1:-0.3.3}"
-CHANGELOG="${2:-scanStatus improvement: replaced raw child_process.exec with audited 'open' package + files whitelist + .npmignore for cleaner artifact; added Security & Trust section to README explaining privileges and scan flag; version 0.3.2 with synced docs. Goal: reach benign scan for easier adoption.}"
+VERSION="${1:-0.3.4}"
+CHANGELOG="${2:-chore: switch license from Apache-2.0 to MIT (more permissive for adoption); synced to ClawHub 0.3.4}"
 
 if ! clawhub whoami >/dev/null 2>&1; then
   echo "Not logged in. Run: clawhub login"

@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": "leiJack-lo",
   "license": "MIT",
   "contracts": {
