@@ -8,6 +8,7 @@ import { RetryEngine } from "./retry-engine.js";
 import { TaskRecovery } from "./task-recovery.js";
 import { DashboardServer } from "./dashboard-server.js";
 import { InstanceAggregator } from "./instance-aggregator.js";
+import { RecoverySettings } from "./recovery-settings.js";
 import {
   resolveInstanceContext,
   touchInstanceMeta,
@@ -28,6 +29,7 @@ export interface ResilienceRuntime {
   stats: StatsCollector;
   retryEngine: RetryEngine;
   taskRecovery: TaskRecovery;
+  recoverySettings: RecoverySettings;
   instanceAggregator: InstanceAggregator;
   dashboardServer: DashboardServer | null;
 }
@@ -83,6 +85,10 @@ export async function bootstrapResilience(
   const stats = new StatsCollector(instancePaths.statsPath);
   const retryEngine = new RetryEngine(instancePaths.strategiesPath);
   const taskRecovery = new TaskRecovery(instancePaths.tasksDir);
+  const recoverySettings = new RecoverySettings(
+    instancePaths.recoverySettingsPath,
+    cfg
+  );
   const instanceAggregator = new InstanceAggregator(instancePaths);
 
   retryEngine.onActiveRetriesChanged = (states) => {
@@ -100,6 +106,7 @@ export async function bootstrapResilience(
     stats,
     retryEngine,
     taskRecovery,
+    recoverySettings,
     instanceAggregator,
     dashboardServer: runtime?.dashboardServer ?? null,
   };

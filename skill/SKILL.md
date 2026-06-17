@@ -46,6 +46,7 @@ Use it to:
 - Configure retry strategies
 - Generate error reports
 - Track task recovery status
+- Configure automatic session recovery prompts in Chinese or English
 
 ## Tools
 
@@ -136,6 +137,28 @@ Generate detailed error reports.
 - "查看任务恢复状态" → `resilience_report({ reportType: "recovery" })`
 - "生成完整状态报告" → `resilience_report({ reportType: "full" })`
 
+### resilience_recovery
+
+View or update automatic session recovery settings. Use this when the user wants to change the "continue the task" wording after a session failure, switch Chinese/English recovery language, or disable/enable automatic recovery.
+
+**Parameters:**
+- `action`: `"show"` (default) | `"update"` | `"reset"`
+- `enabled`: `true` / `false`
+- `language`: `"zh"` | `"en"`
+- `prompt`: custom prompt overriding localized defaults
+- `promptZh`: custom Chinese prompt
+- `promptEn`: custom English prompt
+- `ttlMs`: queued recovery context TTL
+- `cooldownMs`: minimum interval between recovery injections per session
+- `maxPerSession`: maximum automatic injections per session
+
+**Examples:**
+- "查看会话自动恢复设置" → `resilience_recovery({ action: "show" })`
+- "把继续任务话术改成中文" → `resilience_recovery({ action: "update", language: "zh" })`
+- "把继续任务话术改成英文" → `resilience_recovery({ action: "update", language: "en" })`
+- "修改继续任务话术为：任务完成了吗？如果没完成请继续完成任务" → `resilience_recovery({ action: "update", language: "zh", prompt: "任务完成了吗？如果没完成请继续完成任务。" })`
+- "关闭会话自动恢复" → `resilience_recovery({ action: "update", enabled: false })`
+
 ## Error Categories
 
 | Category | Description | Retryable |
@@ -147,6 +170,9 @@ Generate detailed error reports.
 | `network_error` | Connection errors | ✅ |
 | `model_unavailable` | Model not found or offline | ✅ |
 | `context_too_long` | Context length exceeded | ❌ |
+| `token_parse_error` | Tokenizer/token parsing failure | ❌ |
+| `invalid_model_output` | Malformed model output / response format failure | ❌ |
+| `session_runtime_error` | Non-API session runtime failure | ❌ |
 | `unknown` | Unclassified errors | ❌ |
 
 ## Retry Strategies
@@ -175,6 +201,7 @@ Per-instance data: `~/.openclaw/plugins/resilience/instances/<instance-id>/` (st
 ├── meta.json
 ├── stats.json
 ├── strategies.json
+├── recovery-settings.json
 ├── active-retries.json
 ├── logs/YYYY-MM-DD.jsonl
 └── tasks/

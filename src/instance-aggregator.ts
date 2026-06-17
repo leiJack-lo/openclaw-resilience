@@ -32,6 +32,9 @@ function emptyErrorCounts(): Record<ErrorCategory, number> {
     network_error: 0,
     model_unavailable: 0,
     context_too_long: 0,
+    token_parse_error: 0,
+    invalid_model_output: 0,
+    session_runtime_error: 0,
     unknown: 0,
   };
 }

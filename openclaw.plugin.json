@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API error tracking, classification, retry, and task recovery",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "author": "leiJack-lo",
   "license": "MIT",
   "contracts": {
@@ -10,7 +10,8 @@
       "resilience_stats",
       "resilience_strategies",
       "resilience_report",
-      "resilience_dashboard"
+      "resilience_dashboard",
+      "resilience_recovery"
     ]
   },
   "activation": {
@@ -56,6 +57,44 @@
       "workspacePath": {
         "type": "string",
         "description": "Workspace path used for instance label"
+      },
+      "sessionRecoveryEnabled": {
+        "type": "boolean",
+        "description": "Queue next-turn recovery instructions when agent sessions fail",
+        "default": true
+      },
+      "sessionRecoveryLanguage": {
+        "type": "string",
+        "enum": ["zh", "en"],
+        "description": "Default language for recovery instructions",
+        "default": "zh"
+      },
+      "sessionRecoveryPrompt": {
+        "type": "string",
+        "description": "Custom recovery prompt overriding localized defaults"
+      },
+      "sessionRecoveryPromptZh": {
+        "type": "string",
+        "description": "Custom Chinese recovery prompt"
+      },
+      "sessionRecoveryPromptEn": {
+        "type": "string",
+        "description": "Custom English recovery prompt"
+      },
+      "sessionRecoveryTtlMs": {
+        "type": "number",
+        "description": "Queued recovery context TTL in milliseconds",
+        "default": 600000
+      },
+      "sessionRecoveryCooldownMs": {
+        "type": "number",
+        "description": "Minimum interval between recovery injections per session",
+        "default": 300000
+      },
+      "sessionRecoveryMaxPerSession": {
+        "type": "number",
+        "description": "Maximum automatic recovery injections per session",
+        "default": 3
       }
     },
     "additionalProperties": false

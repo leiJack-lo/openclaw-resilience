@@ -7,10 +7,17 @@
  * Uses the official OpenClaw Plugin SDK (2026.5.18).
  */
 
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import {
+  definePluginEntry,
+  type OpenClawPluginApi,
+} from "openclaw/plugin-sdk/plugin-entry";
 import { Type } from "typebox";
 import open from "open";
-import { classifyError, categoryLabel } from "./error-classifier.js";
+import {
+  classifyError,
+  classifySessionError,
+  categoryLabel,
+} from "./error-classifier.js";
 import {
   bootstrapResilience,
   getRuntime,
@@ -54,6 +61,11 @@ async function ensureDashboardRunning() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+const sessionRecoveryState = new Map<
+  string,
+  { lastInjectedAt: number; count: number }
+>();
 
 function formatMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -169,6 +181,36 @@ function formatDailyReport(date: string, logs: LogEntry[]): string {
   return out;
 }
 
+function formatRecoverySettings(settings: {
+  enabled: boolean;
+  language: string;
+  prompt?: string;
+  promptZh?: string;
+  promptEn?: string;
+  ttlMs: number;
+  cooldownMs: number;
+  maxPerSession: number;
+}): string {
+  const prompt =
+    settings.prompt ??
+    (settings.language === "en" ? settings.promptEn : settings.promptZh) ??
+    "(built-in default)";
+
+  return [
+    "## Session Recovery Settings",
+    "",
+    `- Enabled: ${settings.enabled}`,
+    `- Language: ${settings.language}`,
+    `- TTL: ${formatMs(settings.ttlMs)}`,
+    `- Cooldown: ${formatMs(settings.cooldownMs)}`,
+    `- Max per session: ${settings.maxPerSession}`,
+    "",
+    "### Prompt",
+    "",
+    prompt,
+  ].join("\n");
+}
+
 /**
  * Process an API call result: classify, log, record stats, check retry.
  */
@@ -241,6 +283,106 @@ function processCallResult(params: {
   });
 
   return null;
+}
+
+function recordSessionError(params: {
+  error: unknown;
+  durationMs: number;
+  sessionId?: string;
+  sessionKey?: string;
+  runId?: string;
+  provider?: string;
+  model?: string;
+}): ClassifiedError | null {
+  const rt = getRuntime();
+  if (!rt) return null;
+
+  const classified = classifySessionError(params.error, {
+    provider: params.provider,
+    model: params.model,
+  });
+  const timestamp = new Date().toISOString();
+
+  const entry: Omit<LogEntry, "errorType"> & { errorType: ErrorCategory } = {
+    timestamp,
+    instanceId: rt.instancePaths.id,
+    provider: params.provider,
+    model: params.model,
+    errorType: classified.category,
+    errorMessage: classified.rawError,
+    durationMs: params.durationMs,
+    sessionId: params.sessionId ?? params.sessionKey,
+    runId: params.runId,
+  };
+
+  rt.logger.logError(entry);
+  rt.stats.record(entry);
+
+  if (params.sessionKey) {
+    const taskKey = `session-recovery-${params.sessionKey}-${params.runId ?? Date.now()}`;
+    const existing = rt.taskRecovery.getTask(taskKey);
+    const task =
+      existing ??
+      rt.taskRecovery.createTask(taskKey, params.sessionKey, {
+        source: "agent_end",
+        runId: params.runId,
+      });
+    if (task.status === "pending") {
+      rt.taskRecovery.startTask(taskKey);
+    }
+    rt.taskRecovery.failTask(taskKey, classified, "agent_end");
+  }
+
+  return classified;
+}
+
+async function enqueueSessionRecovery(params: {
+  api: OpenClawPluginApi;
+  sessionKey: string;
+  runId?: string;
+  error: ClassifiedError;
+}): Promise<boolean> {
+  const rt = getRuntime();
+  if (!rt) return false;
+
+  const settings = rt.recoverySettings.get();
+  if (!settings.enabled || settings.maxPerSession <= 0) return false;
+
+  const now = Date.now();
+  const current = sessionRecoveryState.get(params.sessionKey) ?? {
+    lastInjectedAt: 0,
+    count: 0,
+  };
+
+  if (current.count >= settings.maxPerSession) return false;
+  if (
+    settings.cooldownMs > 0 &&
+    now - current.lastInjectedAt < settings.cooldownMs
+  ) {
+    return false;
+  }
+
+  const result = await params.api.session.workflow.enqueueNextTurnInjection({
+    sessionKey: params.sessionKey,
+    text: rt.recoverySettings.renderPrompt(params.error),
+    placement: "prepend_context",
+    ttlMs: settings.ttlMs,
+    idempotencyKey: `resilience-recovery-${params.runId ?? now}`,
+    metadata: {
+      source: "resilience",
+      kind: "session_recovery",
+      errorCategory: params.error.category,
+      ...(params.runId ? { runId: params.runId } : {}),
+    },
+  });
+
+  if (result.enqueued) {
+    sessionRecoveryState.set(params.sessionKey, {
+      lastInjectedAt: now,
+      count: current.count + 1,
+    });
+  }
+  return result.enqueued;
 }
 
 // ─── Plugin Definition ─────────────────────────────────────────────────────
@@ -583,6 +725,108 @@ export default definePluginEntry({
       },
     });
 
+    // ─── Tool: resilience_recovery ──────────────────────────────────
+
+    api.registerTool({
+      name: "resilience_recovery",
+      label: "Resilience Recovery",
+      description:
+        "View or update automatic session recovery settings, including " +
+        "whether failed sessions receive a next-turn recovery instruction, " +
+        "the prompt language, and custom continuation wording.",
+      parameters: Type.Object({
+        action: Type.Optional(
+          Type.String({
+            description: 'Action: "show" (default), "update", or "reset"',
+          })
+        ),
+        enabled: Type.Optional(
+          Type.Boolean({ description: "Enable automatic session recovery" })
+        ),
+        language: Type.Optional(
+          Type.String({ description: 'Recovery prompt language: "zh" or "en"' })
+        ),
+        prompt: Type.Optional(
+          Type.String({
+            description:
+              "Custom recovery prompt overriding localized built-in prompts",
+          })
+        ),
+        promptZh: Type.Optional(
+          Type.String({ description: "Custom Chinese recovery prompt" })
+        ),
+        promptEn: Type.Optional(
+          Type.String({ description: "Custom English recovery prompt" })
+        ),
+        ttlMs: Type.Optional(
+          Type.Number({ description: "Queued recovery context TTL in ms" })
+        ),
+        cooldownMs: Type.Optional(
+          Type.Number({
+            description: "Minimum interval between injections per session in ms",
+          })
+        ),
+        maxPerSession: Type.Optional(
+          Type.Number({
+            description: "Maximum automatic recovery injections per session",
+          })
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const { recoverySettings } = requireRuntime();
+        const p = params as Record<string, unknown>;
+        const action = (p.action as string | undefined) ?? "show";
+
+        switch (action) {
+          case "show": {
+            const settings = recoverySettings.get();
+            return {
+              content: [{ type: "text", text: formatRecoverySettings(settings) }],
+              details: settings,
+            };
+          }
+
+          case "update": {
+            const settings = recoverySettings.update(p);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Session recovery settings updated.\n\n" +
+                    formatRecoverySettings(settings),
+                },
+              ],
+              details: settings,
+            };
+          }
+
+          case "reset": {
+            const settings = recoverySettings.reset();
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Session recovery settings reset to plugin/config defaults.\n\n" +
+                    formatRecoverySettings(settings),
+                },
+              ],
+              details: settings,
+            };
+          }
+
+          default:
+            return {
+              content: [
+                { type: "text", text: `Unknown action: ${action}` },
+              ],
+              details: null,
+            };
+        }
+      },
+    });
+
     // ─── Tool: resilience_report ──────────────────────────────────────
 
     api.registerTool({
@@ -790,12 +1034,22 @@ export default definePluginEntry({
      */
     api.on("agent_end", async (event, ctx) => {
       const success = event.success;
-      const runId = event.runId;
+      const runId = event.runId ?? ctx.runId;
 
       if (success === false) {
         api.logger.info(
           `[resilience] Agent ended with error (session: ${ctx.sessionKey}, run: ${runId})`
         );
+
+        const classified = recordSessionError({
+          error: event.error ?? "agent ended without success",
+          durationMs: event.durationMs ?? 0,
+          sessionId: ctx.sessionId,
+          sessionKey: ctx.sessionKey,
+          runId,
+          provider: ctx.modelProviderId,
+          model: ctx.modelId,
+        });
 
         // Check for recoverable tasks in this session
         if (ctx.sessionKey) {
@@ -804,6 +1058,26 @@ export default definePluginEntry({
             if (task.sessionKey === ctx.sessionKey) {
               api.logger.info(
                 `[resilience] Found recoverable task: ${task.taskKey}`
+              );
+            }
+          }
+
+          if (classified) {
+            try {
+              const enqueued = await enqueueSessionRecovery({
+                api,
+                sessionKey: ctx.sessionKey,
+                runId,
+                error: classified,
+              });
+              api.logger.info(
+                enqueued
+                  ? `[resilience] Queued session recovery instruction for ${ctx.sessionKey}`
+                  : `[resilience] Session recovery instruction skipped for ${ctx.sessionKey}`
+              );
+            } catch (err) {
+              api.logger.warn(
+                `[resilience] Failed to queue session recovery instruction: ${err}`
               );
             }
           }

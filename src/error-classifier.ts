@@ -85,6 +85,38 @@ export function classifyError(
 }
 
 /**
+ * Classify an agent/session runtime failure. These are not necessarily model
+ * API call failures, but they should still be counted and can trigger recovery
+ * instructions for the next turn.
+ */
+export function classifySessionError(
+  error: unknown,
+  options?: { provider?: string; model?: string }
+): ClassifiedError {
+  const rawError = extractMessage(error);
+
+  for (const { pattern, category } of ERROR_PATTERNS) {
+    if (pattern.test(rawError)) {
+      return {
+        category,
+        rawError,
+        provider: options?.provider,
+        model: options?.model,
+        retryable: false,
+      };
+    }
+  }
+
+  return {
+    category: "session_runtime_error",
+    rawError,
+    provider: options?.provider,
+    model: options?.model,
+    retryable: false,
+  };
+}
+
+/**
  * Extract a human-readable error message from various error types.
  */
 function extractMessage(error: unknown): string {
@@ -141,6 +173,9 @@ export function categoryLabel(category: ErrorCategory): string {
     network_error: "Network Error",
     model_unavailable: "Model Unavailable",
     context_too_long: "Context Too Long",
+    token_parse_error: "Token Parse Error",
+    invalid_model_output: "Invalid Model Output",
+    session_runtime_error: "Session Runtime Error",
     unknown: "Unknown Error",
   };
   return labels[category];

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.5
+
+- Added session runtime error tracking beyond model API calls:
+  - `agent_end` failures are now classified, logged, and included in stats.
+  - Added `token_parse_error`, `invalid_model_output`, and `session_runtime_error` categories.
+- Added automatic next-turn recovery injection for failed sessions using OpenClaw's plugin session workflow API.
+- Added configurable recovery settings:
+  - enable/disable automatic recovery
+  - choose Chinese or English continuation wording
+  - customize recovery prompts
+  - tune TTL, cooldown, and per-session injection limits
+- Added `resilience_recovery` tool and skill examples for viewing/updating recovery settings.
+
 ## 0.3.4
 
 - chore: switch license from Apache-2.0 to MIT (more permissive for community adoption)

@@ -35,6 +35,7 @@ export interface InstancePaths {
   tasksDir: string;
   metaPath: string;
   activeRetriesPath: string;
+  recoverySettingsPath: string;
 }
 
 export interface InstanceInfo extends InstanceMeta {
@@ -115,6 +116,7 @@ export function getInstancePaths(
     tasksDir: path.join(root, "tasks"),
     metaPath: path.join(root, "meta.json"),
     activeRetriesPath: path.join(root, "active-retries.json"),
+    recoverySettingsPath: path.join(root, "recovery-settings.json"),
   };
 }
 
@@ -214,6 +216,7 @@ export function discoverInstances(): InstanceInfo[] {
     legacy.logDir = path.join(RESILIENCE_ROOT, "logs");
     legacy.strategiesPath = path.join(RESILIENCE_ROOT, "strategies.json");
     legacy.tasksDir = path.join(RESILIENCE_ROOT, "tasks");
+    legacy.recoverySettingsPath = path.join(RESILIENCE_ROOT, "recovery-settings.json");
     legacy.root = RESILIENCE_ROOT;
     add(legacy, true);
   }
