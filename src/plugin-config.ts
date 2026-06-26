@@ -71,6 +71,36 @@ function pickResilienceFields(raw: Record<string, unknown>): ResilienceConfig {
   if (typeof raw.workspacePath === "string" && raw.workspacePath.trim()) {
     cfg.workspacePath = raw.workspacePath.trim();
   }
+  if (typeof raw.sessionRecoveryEnabled === "boolean") {
+    cfg.sessionRecoveryEnabled = raw.sessionRecoveryEnabled;
+  }
+  if (raw.sessionRecoveryLanguage === "zh" || raw.sessionRecoveryLanguage === "en") {
+    cfg.sessionRecoveryLanguage = raw.sessionRecoveryLanguage;
+  }
+  if (typeof raw.sessionRecoveryPrompt === "string" && raw.sessionRecoveryPrompt.trim()) {
+    cfg.sessionRecoveryPrompt = raw.sessionRecoveryPrompt.trim();
+  }
+  if (typeof raw.sessionRecoveryPromptZh === "string" && raw.sessionRecoveryPromptZh.trim()) {
+    cfg.sessionRecoveryPromptZh = raw.sessionRecoveryPromptZh.trim();
+  }
+  if (typeof raw.sessionRecoveryPromptEn === "string" && raw.sessionRecoveryPromptEn.trim()) {
+    cfg.sessionRecoveryPromptEn = raw.sessionRecoveryPromptEn.trim();
+  }
+  if (typeof raw.sessionRecoveryTtlMs === "number" && Number.isFinite(raw.sessionRecoveryTtlMs)) {
+    cfg.sessionRecoveryTtlMs = Math.max(0, Math.floor(raw.sessionRecoveryTtlMs));
+  }
+  if (
+    typeof raw.sessionRecoveryCooldownMs === "number" &&
+    Number.isFinite(raw.sessionRecoveryCooldownMs)
+  ) {
+    cfg.sessionRecoveryCooldownMs = Math.max(0, Math.floor(raw.sessionRecoveryCooldownMs));
+  }
+  if (
+    typeof raw.sessionRecoveryMaxPerSession === "number" &&
+    Number.isFinite(raw.sessionRecoveryMaxPerSession)
+  ) {
+    cfg.sessionRecoveryMaxPerSession = Math.max(0, Math.floor(raw.sessionRecoveryMaxPerSession));
+  }
   return cfg;
 }
 

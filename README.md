@@ -17,11 +17,12 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 
 ## 功能
 
-- 📊 **错误分类** — 自动将 API 错误分为 8 种类型（rate_limit、server_overload、timeout 等）
+- 📊 **错误分类** — 自动将 API / 会话错误分为 11 种类型（rate_limit、server_overload、token_parse_error 等）
 - 📝 **持久化日志** — 按日期记录每次 API 调用结果（JSONL 格式）
 - 📈 **多维统计** — 按时间（小时/日/周）和模型统计错误率、耗时
 - 🔁 **灵活重试** — 支持固定间隔、指数退避、自定义时间表三种策略
 - 🔄 **任务恢复** — 任务中断时保存上下文，支持自动恢复
+- 🧭 **会话恢复指令** — 会话运行错误后自动给下一轮注入“检查任务是否完成并继续”的恢复上下文，支持中英文和自定义话术
 - 🛠️ **自然语言交互** — 通过 Skill 直接用自然语言查询和管理
 - 🖥️ **Web 监控面板** — 浏览器实时查看错误统计、选择重试方案（5s/60s/5min/1h 刷新）
 - 🔀 **多实例聚合** — 多个 OpenClaw Gateway / workspace 的数据统一在一个面板查看
@@ -40,7 +41,11 @@ openclaw plugins install clawhub:@leiJack-lo/resilience --dangerously-force-unsa
 # 2. 再装配套 Skill（强烈推荐，提供中文自然语言话术）
 openclaw skills install resilience-monitor
 
-# 3. 重启 Gateway（插件的 hooks 和工具注册必须重启后才生效）
+# 3. OpenClaw 2026.6.10+：允许 agent_end 会话恢复 hook 读取会话结束事件
+#    不设置时，API 错误统计仍可用，但“会话失败统计 + 下一轮恢复指令”不会启用。
+openclaw config set plugins.entries.resilience.hooks.allowConversationAccess true
+
+# 4. 重启 Gateway（插件的 hooks 和工具注册必须重启后才生效）
 openclaw gateway restart
 ```
 
@@ -89,11 +94,26 @@ npm run build
 
 ```json
 {
-  "logDir": "~/.openclaw/plugins/resilience/logs",
-  "statsRetentionDays": 90,
-  "defaultStrategy": "exponential"
+  "plugins": {
+    "entries": {
+      "resilience": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        },
+        "config": {
+          "statsRetentionDays": 90,
+          "defaultStrategy": "exponential",
+          "dashboardEnabled": true,
+          "dashboardPort": 18765
+        }
+      }
+    }
+  }
 }
 ```
+
+`hooks.allowConversationAccess` 是 OpenClaw 2026.6.10+ 对非内置插件的显式授权要求。Resilience 只在 `agent_end` 读取会话结束状态，用于统计会话级错误并排队下一轮恢复提示；不修改会话内容、不外发数据。
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -105,6 +125,14 @@ npm run build
 | `instanceId` | string | gateway-instance-id | 实例 ID（数据隔离目录名） |
 | `instanceLabel` | string | workspace 目录名 | 面板中显示的名称 |
 | `workspacePath` | string | — | 用于自动推断 instanceLabel |
+| `sessionRecoveryEnabled` | boolean | `true` | 会话失败时是否自动注入下一轮恢复指令 |
+| `sessionRecoveryLanguage` | `"zh"` / `"en"` | `"zh"` | 默认恢复指令语言 |
+| `sessionRecoveryPrompt` | string | — | 自定义恢复指令（覆盖中英文默认话术） |
+| `sessionRecoveryPromptZh` | string | — | 自定义中文恢复指令 |
+| `sessionRecoveryPromptEn` | string | — | 自定义英文恢复指令 |
+| `sessionRecoveryTtlMs` | number | `600000` | 恢复指令在下一轮上下文中的有效期 |
+| `sessionRecoveryCooldownMs` | number | `300000` | 同一会话自动注入恢复指令的最小间隔 |
+| `sessionRecoveryMaxPerSession` | number | `3` | 同一会话每个 Gateway 进程最多自动注入次数 |
 
 ## 多实例
 
@@ -115,6 +143,7 @@ npm run build
   meta.json           # 标签、workspace、最后活跃时间
   stats.json
   strategies.json
+  recovery-settings.json
   logs/
   tasks/
   active-retries.json
@@ -252,7 +281,7 @@ resilience_dashboard({ action: "stop" })
 插件自动注册了以下 Hook：
 
 - **`model_call_ended`** — 每次 API 调用结束后自动记录错误、更新统计、检查重试
-- **`agent_end`** — Agent 运行结束时检测中断任务
+- **`agent_end`** — Agent 运行结束时检测会话中断，记录会话错误统计，并在下一轮注入恢复指令
 
 ## 错误分类
 
@@ -265,7 +294,38 @@ resilience_dashboard({ action: "stop" })
 | `network_error` | — | 网络连接错误 | ✅ |
 | `model_unavailable` | — | 模型不存在或下线 | ✅ |
 | `context_too_long` | — | 上下文超长 | ❌ |
+| `token_parse_error` | — | token / tokenizer / token 解析相关错误 | ❌ |
+| `invalid_model_output` | — | 模型返回内容格式异常、JSON/schema 解析失败等 | ❌ |
+| `session_runtime_error` | — | 非模型 API 调用层面的会话运行错误 | ❌ |
 | `unknown` | — | 未知错误 | ❌ |
+
+## 会话恢复设置
+
+当 `agent_end` 报告会话失败时，插件会：
+
+1. 将错误分类并写入日志/统计。
+2. 为当前 session 创建一条恢复任务记录。
+3. 通过 OpenClaw `enqueueNextTurnInjection` 给下一轮注入恢复指令，例如“任务完成了吗？如果没有，请继续完成任务”。
+
+可直接通过 Skill / 工具修改继续任务话术：
+
+```js
+// 查看当前恢复设置
+resilience_recovery({ action: "show" })
+
+// 改成中文默认话术
+resilience_recovery({ action: "update", language: "zh" })
+
+// 改成英文默认话术
+resilience_recovery({ action: "update", language: "en" })
+
+// 自定义继续任务话术
+resilience_recovery({
+  action: "update",
+  language: "zh",
+  prompt: "刚才任务中断了。请先判断原任务是否完成；如果没完成，请继续把它做完。"
+})
+```
 
 ## 重试策略
 

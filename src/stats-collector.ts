@@ -35,8 +35,18 @@ function emptyErrors(): Record<ErrorCategory, number> {
     network_error: 0,
     model_unavailable: 0,
     context_too_long: 0,
+    token_parse_error: 0,
+    invalid_model_output: 0,
+    session_runtime_error: 0,
     unknown: 0,
   };
+}
+
+function incrementErrorCount(
+  counts: Record<ErrorCategory, number>,
+  category: ErrorCategory
+): void {
+  counts[category] = (counts[category] ?? 0) + 1;
 }
 
 /** Create empty stats data */
@@ -155,7 +165,7 @@ export class StatsCollector {
     stats.totalCalls++;
     if (isError) {
       stats.failedCalls++;
-      stats.errorsByType[entry.errorType as ErrorCategory]++;
+      incrementErrorCount(stats.errorsByType, entry.errorType as ErrorCategory);
     }
     stats.successRate =
       stats.totalCalls > 0
@@ -197,7 +207,7 @@ export class StatsCollector {
 
     if (isError) {
       stats.failedCalls++;
-      stats.errorsByType[entry.errorType as ErrorCategory]++;
+      incrementErrorCount(stats.errorsByType, entry.errorType as ErrorCategory);
     }
     stats.successRate =
       stats.totalCalls > 0

@@ -14,6 +14,9 @@ export type ErrorCategory =
   | "network_error"
   | "model_unavailable"
   | "context_too_long"
+  | "token_parse_error"
+  | "invalid_model_output"
+  | "session_runtime_error"
   | "unknown";
 
 /** HTTP status code to error category mapping */
@@ -30,6 +33,8 @@ export const ERROR_PATTERNS: Array<{ pattern: RegExp; category: ErrorCategory }>
   { pattern: /ECONNREFUSED|ECONNRESET|ENOTFOUND|network/i, category: "network_error" },
   { pattern: /model\s+not\s+found|does not exist|unavailable/i, category: "model_unavailable" },
   { pattern: /context\s+(length|too|exceed|long)|max\s+tokens/i, category: "context_too_long" },
+  { pattern: /token(?:izer)?|parse token|invalid token|unexpected token/i, category: "token_parse_error" },
+  { pattern: /invalid (?:model )?(?:response|output|format)|malformed|schema|json parse|parse json/i, category: "invalid_model_output" },
 ];
 
 /** A classified error record */
@@ -163,4 +168,20 @@ export interface ResilienceConfig {
   instanceLabel?: string;
   /** Workspace path for instance label discovery */
   workspacePath?: string;
+  /** Enable automatic next-turn recovery injection for failed agent sessions */
+  sessionRecoveryEnabled?: boolean;
+  /** Default recovery prompt language */
+  sessionRecoveryLanguage?: "zh" | "en";
+  /** Custom recovery prompt overriding the built-in localized prompt */
+  sessionRecoveryPrompt?: string;
+  /** Custom Chinese recovery prompt */
+  sessionRecoveryPromptZh?: string;
+  /** Custom English recovery prompt */
+  sessionRecoveryPromptEn?: string;
+  /** TTL for queued next-turn recovery context */
+  sessionRecoveryTtlMs?: number;
+  /** Minimum interval between automatic recovery injections for one session */
+  sessionRecoveryCooldownMs?: number;
+  /** Maximum automatic recovery injections per session while this gateway process runs */
+  sessionRecoveryMaxPerSession?: number;
 }

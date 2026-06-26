@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${1:-0.3.4}"
-CHANGELOG="${2:-chore: switch license from Apache-2.0 to MIT (more permissive for adoption); synced to ClawHub 0.3.4}"
+VERSION="${1:-0.3.6}"
+CHANGELOG="${2:-fix: update OpenClaw SDK compatibility to 2026.6.10 and harden session recovery}"
 
 if ! clawhub whoami >/dev/null 2>&1; then
   echo "Not logged in. Run: clawhub login"

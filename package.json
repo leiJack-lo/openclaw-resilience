@@ -1,6 +1,6 @@
 {
   "name": "@leiJack-lo/resilience",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "description": "LLM API error tracking, classification, retry, and task recovery plugin for OpenClaw",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,19 +18,20 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "verify:dashboard": "npm run build && node scripts/verify-dashboard.mjs",
-    "verify:config": "npm run build && node scripts/verify-plugin-config.mjs"
+    "verify:config": "npm run build && node scripts/verify-plugin-config.mjs",
+    "verify:session-recovery": "npm run build && node scripts/verify-session-recovery.mjs"
   },
   "openclaw": {
     "extensions": [
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.5.18",
-      "minGatewayVersion": "2026.5.18"
+      "pluginApi": ">=2026.6.10",
+      "minGatewayVersion": "2026.6.10"
     },
     "build": {
-      "openclawVersion": "2026.5.18",
-      "pluginSdkVersion": "2026.5.18"
+      "openclawVersion": "2026.6.10",
+      "pluginSdkVersion": "2026.6.10"
     }
   },
   "files": [
@@ -59,7 +60,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
-    "openclaw": "2026.5.18",
+    "openclaw": "^2026.6.10",
     "typescript": "^5.8.0"
   }
 }
