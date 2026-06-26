@@ -20,6 +20,20 @@ const RETRYABLE_CATEGORIES: Set<ErrorCategory> = new Set([
   "network_error",
 ]);
 
+const KNOWN_CATEGORIES: Set<ErrorCategory> = new Set([
+  "rate_limit",
+  "server_overload",
+  "timeout",
+  "auth_failed",
+  "network_error",
+  "model_unavailable",
+  "context_too_long",
+  "token_parse_error",
+  "invalid_model_output",
+  "session_runtime_error",
+  "unknown",
+]);
+
 /**
  * Classify a raw error into a structured error record.
  *
@@ -33,8 +47,21 @@ export function classifyError(
 ): ClassifiedError {
   const rawError = extractMessage(error);
   const httpStatus = options?.httpStatus ?? extractHttpStatus(error);
+  const normalized = rawError.trim().toLowerCase() as ErrorCategory;
 
-  // 1. Try HTTP status code mapping first
+  // 1. Accept OpenClaw-native category strings from hook events.
+  if (KNOWN_CATEGORIES.has(normalized)) {
+    return {
+      category: normalized,
+      rawError,
+      httpStatus,
+      provider: options?.provider,
+      model: options?.model,
+      retryable: RETRYABLE_CATEGORIES.has(normalized),
+    };
+  }
+
+  // 2. Try HTTP status code mapping.
   if (httpStatus !== undefined && httpStatus in STATUS_MAP) {
     const category = STATUS_MAP[httpStatus];
     return {
@@ -47,7 +74,7 @@ export function classifyError(
     };
   }
 
-  // 2. Try pattern matching on the error message
+  // 3. Try pattern matching on the error message.
   for (const { pattern, category } of ERROR_PATTERNS) {
     if (pattern.test(rawError)) {
       return {
@@ -61,7 +88,7 @@ export function classifyError(
     }
   }
 
-  // 3. Check for 5xx (server overload without specific mapping)
+  // 4. Check for 5xx (server overload without specific mapping).
   if (httpStatus !== undefined && httpStatus >= 500) {
     return {
       category: "server_overload",
@@ -73,7 +100,7 @@ export function classifyError(
     };
   }
 
-  // 4. Fallback to unknown
+  // 5. Fallback to unknown.
   return {
     category: "unknown",
     rawError,

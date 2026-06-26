@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.6
+
+- Updated OpenClaw SDK and compatibility metadata for OpenClaw 2026.6.10.
+- Fixed TypeScript declaration generation under the 6.10 SDK by explicitly typing the plugin entry export.
+- Hardened session recovery injection: failed sessions are still classified, logged, and counted when the host does not expose the next-turn injection API, instead of throwing from the hook.
+- Fixed retry tracking to use a stable per-session/run operation key instead of a timestamp key, so repeated failures update one active retry record.
+- Classified OpenClaw-native hook categories such as `rate_limit` directly instead of falling through to `unknown`.
+- Documented the OpenClaw 2026.6.10+ `plugins.entries.resilience.hooks.allowConversationAccess=true` requirement for the `agent_end` recovery hook.
+- Added a focused session recovery verification script that registers the plugin with a fake 6.10 API, triggers an `agent_end` failure, and checks the logged stats plus queued recovery injection.
+
 ## 0.3.5
 
 - Added session runtime error tracking beyond model API calls:

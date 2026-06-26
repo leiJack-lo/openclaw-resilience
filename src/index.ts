@@ -10,6 +10,9 @@
 import {
   definePluginEntry,
   type OpenClawPluginApi,
+  type OpenClawPluginDefinition,
+  type PluginNextTurnInjection,
+  type PluginNextTurnInjectionEnqueueResult,
 } from "openclaw/plugin-sdk/plugin-entry";
 import { Type } from "typebox";
 import open from "open";
@@ -77,6 +80,22 @@ function formatMs(ms: number): string {
 function formatIntervals(intervals: number[], type: string): string {
   if (type === "fixed") return `${formatMs(intervals[0] ?? 0)} (fixed)`;
   return intervals.map(formatMs).join(", ");
+}
+
+function stableRetryOperationKey(params: {
+  sessionKey?: string;
+  runId?: string;
+  provider?: string;
+  model?: string;
+  category: ErrorCategory;
+}): string {
+  const runPart =
+    params.runId ??
+    ([params.provider, params.model, params.category]
+      .filter((part): part is string => Boolean(part))
+      .join(":") ||
+      params.category);
+  return `${params.sessionKey ?? "unknown-session"}:${runPart}`;
 }
 
 function formatTimeStats(
@@ -362,7 +381,15 @@ async function enqueueSessionRecovery(params: {
     return false;
   }
 
-  const result = await params.api.session.workflow.enqueueNextTurnInjection({
+  const enqueue = resolveNextTurnInjectionQueue(params.api);
+  if (!enqueue) {
+    params.api.logger.warn(
+      "[resilience] Session recovery queue API is unavailable; recorded stats without next-turn injection"
+    );
+    return false;
+  }
+
+  const result = await enqueue({
     sessionKey: params.sessionKey,
     text: rt.recoverySettings.renderPrompt(params.error),
     placement: "prepend_context",
@@ -385,9 +412,33 @@ async function enqueueSessionRecovery(params: {
   return result.enqueued;
 }
 
+function resolveNextTurnInjectionQueue(
+  api: OpenClawPluginApi
+):
+  | ((injection: PluginNextTurnInjection) => Promise<PluginNextTurnInjectionEnqueueResult>)
+  | null {
+  const workflowQueue = api.session?.workflow?.enqueueNextTurnInjection;
+  if (typeof workflowQueue === "function") {
+    return workflowQueue.bind(api.session.workflow);
+  }
+
+  const legacyQueue = (
+    api as OpenClawPluginApi & {
+      enqueueNextTurnInjection?: (
+        injection: PluginNextTurnInjection
+      ) => Promise<PluginNextTurnInjectionEnqueueResult>;
+    }
+  ).enqueueNextTurnInjection;
+  if (typeof legacyQueue === "function") {
+    return legacyQueue.bind(api);
+  }
+
+  return null;
+}
+
 // ─── Plugin Definition ─────────────────────────────────────────────────────
 
-export default definePluginEntry({
+const plugin: OpenClawPluginDefinition = definePluginEntry({
   id: "resilience",
   name: "Resilience",
   description:
@@ -1000,6 +1051,8 @@ export default definePluginEntry({
       const failureKind = event.failureKind;
       const sessionId = ctx.sessionId;
       const runId = event.runId;
+      const httpStatus = (event as { httpStatus?: number; status?: number })
+        .httpStatus ?? (event as { status?: number }).status;
 
       // Build an error object if the call failed
       let errorObj: unknown = undefined;
@@ -1011,6 +1064,7 @@ export default definePluginEntry({
         provider,
         model,
         error: errorObj,
+        httpStatus,
         durationMs,
         sessionId,
         runId,
@@ -1018,7 +1072,13 @@ export default definePluginEntry({
 
       // If error is retryable, check retry strategy
       if (classified?.retryable) {
-        const opKey = `${ctx.sessionKey ?? "unknown"}-${runId ?? "unknown"}-${Date.now()}`;
+        const opKey = stableRetryOperationKey({
+          sessionKey: ctx.sessionKey,
+          runId,
+          provider,
+          model,
+          category: classified.category,
+        });
         const retryResult = getRuntime()!.retryEngine.shouldRetry(opKey, classified);
         if (retryResult.retry) {
           api.logger.info(
@@ -1114,3 +1174,5 @@ export default definePluginEntry({
     api.logger.info("[resilience] Plugin registered successfully");
   },
 });
+
+export default plugin;

@@ -41,7 +41,11 @@ openclaw plugins install clawhub:@leiJack-lo/resilience --dangerously-force-unsa
 # 2. 再装配套 Skill（强烈推荐，提供中文自然语言话术）
 openclaw skills install resilience-monitor
 
-# 3. 重启 Gateway（插件的 hooks 和工具注册必须重启后才生效）
+# 3. OpenClaw 2026.6.10+：允许 agent_end 会话恢复 hook 读取会话结束事件
+#    不设置时，API 错误统计仍可用，但“会话失败统计 + 下一轮恢复指令”不会启用。
+openclaw config set plugins.entries.resilience.hooks.allowConversationAccess true
+
+# 4. 重启 Gateway（插件的 hooks 和工具注册必须重启后才生效）
 openclaw gateway restart
 ```
 
@@ -90,11 +94,26 @@ npm run build
 
 ```json
 {
-  "logDir": "~/.openclaw/plugins/resilience/logs",
-  "statsRetentionDays": 90,
-  "defaultStrategy": "exponential"
+  "plugins": {
+    "entries": {
+      "resilience": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        },
+        "config": {
+          "statsRetentionDays": 90,
+          "defaultStrategy": "exponential",
+          "dashboardEnabled": true,
+          "dashboardPort": 18765
+        }
+      }
+    }
+  }
 }
 ```
+
+`hooks.allowConversationAccess` 是 OpenClaw 2026.6.10+ 对非内置插件的显式授权要求。Resilience 只在 `agent_end` 读取会话结束状态，用于统计会话级错误并排队下一轮恢复提示；不修改会话内容、不外发数据。
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|

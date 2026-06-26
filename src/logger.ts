@@ -23,6 +23,7 @@ export class ResilienceLogger {
     this.ensureLogDir();
     // Flush buffer every 5 seconds
     this.flushTimer = setInterval(() => this.flush(), 5000);
+    this.flushTimer.unref?.();
   }
 
   /**
