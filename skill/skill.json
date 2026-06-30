@@ -1,8 +1,8 @@
 {
   "id": "resilience",
   "name": "Resilience",
-  "description": "LLM API error tracking, classification, retry, and task recovery. REQUIRES the @leiJack-lo/resilience plugin (install plugin first, then this skill). Provides Chinese natural language interface only; core tools + hooks + dashboard server come from the plugin.",
-  "version": "0.3.6",
+  "description": "LLM API and agent session error tracking, classification, retry, and task recovery. REQUIRES the @leiJack-lo/resilience plugin (install plugin first, then this skill). Provides Chinese natural language interface only; core tools + hooks + dashboard server come from the plugin.",
+  "version": "0.4.0",
   "author": "leiJack-lo",
   "license": "MIT",
   "plugin": "resilience",
@@ -11,7 +11,8 @@
     "resilience_strategies",
     "resilience_report",
     "resilience_dashboard",
-    "resilience_recovery"
+    "resilience_recovery",
+    "resilience_sessions"
   ],
   "naturalLanguage": {
     "examples": [
@@ -74,6 +75,11 @@
         "intent": "把继续任务话术改成英文",
         "tool": "resilience_recovery",
         "params": { "action": "update", "language": "en" }
+      },
+      {
+        "intent": "查看会话和工具失败恢复队列",
+        "tool": "resilience_sessions",
+        "params": { "action": "summary" }
       }
     ]
   }

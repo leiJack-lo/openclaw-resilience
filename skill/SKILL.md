@@ -14,7 +14,7 @@ clawhub login
 
 # 1. 安装插件（必须带 --dangerously-force-unsafe-install）
 # 原因：插件会使用 open 包打开浏览器、启动本地 HTTP server (默认 18765)、
-# 注册 model_call_ended / agent_end 等敏感 hook、读写 ~/.openclaw/plugins/resilience/ 下的日志和配置。
+# 注册 model_call_ended / agent_end / after_tool_call 等敏感 hook、读写 ~/.openclaw/plugins/resilience/ 下的日志和配置。
 # ClawHub 安全扫描因此标记为 "suspicious"（这是正常行为，不是恶意代码）。
 openclaw plugins install clawhub:@leiJack-lo/resilience --dangerously-force-unsafe-install
 
@@ -50,6 +50,7 @@ Use it to:
 - Configure retry strategies
 - Generate error reports
 - Track task recovery status
+- Track agent session and tool failure recovery queues
 - Configure automatic session recovery prompts in Chinese or English
 
 ## Tools
@@ -65,6 +66,7 @@ Open the live web dashboard in your browser for real-time error stats and retry 
 - Live error overview (today / hour / active retries)
 - Model breakdown table
 - Recent errors feed
+- Session/tool recovery queue summary
 - Retry strategy cards — set default, adjust max retries
 - Auto-refresh: **5s**, **60s**, **5min**, **1h**, or off
 
@@ -166,6 +168,18 @@ View or update automatic session recovery settings. Use this when the user wants
 - "修改继续任务话术为：任务完成了吗？如果没完成请继续完成任务" → `resilience_recovery({ action: "update", language: "zh", prompt: "任务完成了吗？如果没完成请继续完成任务。" })`
 - "关闭会话自动恢复" → `resilience_recovery({ action: "update", enabled: false })`
 
+### resilience_sessions
+
+View agent session and tool failure recovery records. These are separate from LLM API errors and are stored per OpenClaw instance.
+
+**Parameters:**
+- `action`: `"summary"` (default) | `"list"`
+- `limit`: maximum records to return
+
+**Examples:**
+- "查看会话和工具失败恢复队列" → `resilience_sessions({ action: "summary" })`
+- "列出最近的会话恢复记录" → `resilience_sessions({ action: "list", limit: 20 })`
+
 ## Error Categories
 
 | Category | Description | Retryable |
@@ -210,6 +224,7 @@ Per-instance data: `~/.openclaw/plugins/resilience/instances/<instance-id>/` (st
 ├── strategies.json
 ├── recovery-settings.json
 ├── active-retries.json
+├── session-retries.json
 ├── logs/YYYY-MM-DD.jsonl
 └── tasks/
 ```

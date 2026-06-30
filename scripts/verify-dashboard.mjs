@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { StatsCollector } from "../dist/stats-collector.js";
+import { SessionRetryStore } from "../dist/session-retry-store.js";
 import { InstanceAggregator } from "../dist/instance-aggregator.js";
 import { DashboardServer } from "../dist/dashboard-server.js";
 import { getInstancePaths, INSTANCES_DIR } from "../dist/instance-registry.js";
@@ -23,6 +24,17 @@ for (const p of [a, b]) {
     errorType: "rate_limit",
     errorMessage: "429",
     durationMs: 100,
+  });
+  const sessionRetries = new SessionRetryStore(p.sessionRetriesPath, {
+    id: p.id,
+    label: p.label,
+  });
+  sessionRetries.recordFailure({
+    source: "after_tool_call",
+    error: "This operation was aborted by openclawAbort",
+    sessionKey: `session-${p.id}`,
+    runId: `run-${p.id}`,
+    toolName: "exec_command",
   });
   fs.writeFileSync(
     p.metaPath,
@@ -50,6 +62,7 @@ const checks = [
   ["/api/overview?instance=all", 200],
   ["/api/overview?instance=test-instance-a", 200],
   ["/api/models?instance=all", 200],
+  ["/api/session-retries?instance=all", 200],
   ["/api/strategies?instance=test-instance-a", 200],
 ];
 
@@ -74,6 +87,14 @@ if (!overview.today?.totalCalls) {
   throw new Error("aggregated overview missing today stats");
 }
 console.log("OK aggregated overview");
+
+const sessionRetries = await fetch(base + "/api/session-retries?instance=all").then((r) =>
+  r.json()
+);
+if ((sessionRetries.summary?.total ?? 0) < 2) {
+  throw new Error("aggregated session retries missing seeded records");
+}
+console.log("OK aggregated session retries");
 
 await server.stop();
 

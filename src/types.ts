@@ -132,6 +132,77 @@ export interface RetryState {
   runId?: string;
 }
 
+// ─── Session / Task Recovery Queue ─────────────────────────────────────────
+
+/** Agent/session level failure categories, separate from LLM API failures. */
+export type SessionErrorCategory =
+  | "prompt_aborted"
+  | "tool_execution_failed"
+  | "shell_parse_error"
+  | "session_takeover"
+  | "task_timeout"
+  | "browser_workflow_failed"
+  | "permission_denied"
+  | "config_error"
+  | "external_side_effect_risk"
+  | "unknown_session_error";
+
+/** Lifecycle status for a session/task recovery record. */
+export type SessionRetryStatus =
+  | "queued"
+  | "injected"
+  | "retrying"
+  | "recovered"
+  | "failed"
+  | "manual_required"
+  | "skipped";
+
+/** How the plugin should recover a failed session/task. */
+export type SessionRecoveryMode =
+  | "next_turn_injection"
+  | "rerun_task"
+  | "manual";
+
+/** Persisted queue record for agent/session/tool failures. */
+export interface SessionRetryRecord {
+  id: string;
+  source:
+    | "agent_end"
+    | "after_tool_call"
+    | "prompt_error"
+    | "cron"
+    | "manual";
+  sessionKey?: string;
+  sessionId?: string;
+  runId?: string;
+  taskId?: string;
+  cronJobId?: string;
+  toolName?: string;
+  category: SessionErrorCategory;
+  errorMessage: string;
+  fingerprint: string;
+  retryable: boolean;
+  attempt: number;
+  maxAttempts: number;
+  nextRetryAt?: string;
+  status: SessionRetryStatus;
+  recoveryMode: SessionRecoveryMode;
+  instanceId?: string;
+  instanceLabel?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SessionRetrySummary {
+  total: number;
+  retryable: number;
+  byStatus: Record<SessionRetryStatus, number>;
+  byCategory: Record<SessionErrorCategory, number>;
+  byMode: Record<SessionRecoveryMode, number>;
+  pending: number;
+  manualRequired: number;
+}
+
 // ─── Task Recovery ──────────────────────────────────────────────────────────
 
 /** Status of a recoverable task */

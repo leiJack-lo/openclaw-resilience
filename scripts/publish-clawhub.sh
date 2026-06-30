@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${1:-0.3.6}"
+VERSION="${1:-0.4.0}"
 CHANGELOG="${2:-fix: update OpenClaw SDK compatibility to 2026.6.10 and harden session recovery}"
 
 if ! clawhub whoami >/dev/null 2>&1; then

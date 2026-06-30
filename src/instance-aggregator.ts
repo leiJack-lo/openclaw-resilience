@@ -8,6 +8,7 @@ import { StatsCollector } from "./stats-collector.js";
 import { RetryEngine } from "./retry-engine.js";
 import { ResilienceLogger } from "./logger.js";
 import { TaskRecovery } from "./task-recovery.js";
+import { SessionRetryStore } from "./session-retry-store.js";
 import {
   discoverInstances,
   getInstancePaths,
@@ -20,6 +21,7 @@ import type {
   ModelStats,
   RetryState,
   RetryStrategy,
+  SessionRetryRecord,
   TimeStats,
 } from "./types.js";
 
@@ -133,7 +135,12 @@ export class InstanceAggregator {
     const list = this.listInstances();
     if (target === "all") {
       return list
-        .filter((i) => i.hasStats || fs.existsSync(i.paths.logDir))
+        .filter(
+          (i) =>
+            i.hasStats ||
+            fs.existsSync(i.paths.logDir) ||
+            fs.existsSync(i.paths.sessionRetriesPath)
+        )
         .map((info) => ({
           info,
           stats: new StatsCollector(info.paths.statsPath),
@@ -166,6 +173,7 @@ export class InstanceAggregator {
     let lastUpdated = "";
     const activeRetries: Record<string, RetryState & { instanceId: string; instanceLabel: string }> = {};
     let failedTasks = 0;
+    const sessionRetryRecords: SessionRetryRecord[] = [];
     const recentErrors: Array<LogEntry & { instanceId: string; instanceLabel: string; errorLabel: string }> = [];
 
     for (const { info, stats } of collectors) {
@@ -196,6 +204,18 @@ export class InstanceAggregator {
       const tasks = new TaskRecovery(info.paths.tasksDir);
       failedTasks += tasks.getRecoverableTasks().length;
 
+      const sessionRetries = new SessionRetryStore(info.paths.sessionRetriesPath, {
+        id: info.id,
+        label: info.label,
+      });
+      sessionRetryRecords.push(
+        ...sessionRetries.list(100).map((record) => ({
+          ...record,
+          instanceId: record.instanceId ?? info.id,
+          instanceLabel: record.instanceLabel ?? info.label,
+        }))
+      );
+
       for (const [key, state] of Object.entries(loadActiveRetries(info.paths))) {
         activeRetries[`${info.id}:${key}`] = {
           ...state,
@@ -206,6 +226,7 @@ export class InstanceAggregator {
     }
 
     recentErrors.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    sessionRetryRecords.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
     return {
       instance: resolved,
@@ -224,7 +245,36 @@ export class InstanceAggregator {
       week,
       activeRetries,
       failedTasks,
+      sessionRetriesSummary: this.summarizeSessionRetries(sessionRetryRecords),
+      sessionRetries: sessionRetryRecords.slice(0, 50),
       recentErrors: recentErrors.slice(0, 30),
+    };
+  }
+
+  getSessionRetries(target: string, limit = 100) {
+    const resolved = this.resolveTarget(target);
+    const records: SessionRetryRecord[] = [];
+
+    for (const { info } of this.collectorsFor(resolved)) {
+      const store = new SessionRetryStore(info.paths.sessionRetriesPath, {
+        id: info.id,
+        label: info.label,
+      });
+      records.push(
+        ...store.list(limit).map((record) => ({
+          ...record,
+          instanceId: record.instanceId ?? info.id,
+          instanceLabel: record.instanceLabel ?? info.label,
+        }))
+      );
+    }
+
+    records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+    return {
+      instance: resolved,
+      summary: this.summarizeSessionRetries(records),
+      records: records.slice(0, limit),
     };
   }
 
@@ -273,5 +323,12 @@ export class InstanceAggregator {
       JSON.stringify(obj, null, 2),
       "utf-8"
     );
+  }
+
+  private summarizeSessionRetries(records: SessionRetryRecord[]) {
+    return new SessionRetryStore(this.localPaths.sessionRetriesPath, {
+      id: this.localInstanceId,
+      label: this.localPaths.label,
+    }).getSummary(records);
   }
 }

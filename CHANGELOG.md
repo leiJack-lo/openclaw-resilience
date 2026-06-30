@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Added a persistent session/tool recovery queue (`session-retries.json`) for agent-level failures that are not LLM API errors.
+- Added `after_tool_call` failure capture with conservative recovery policy: retryable failures can receive next-turn recovery instructions, while permission/config/shell-parse/external-side-effect risks are marked `manual_required`.
+- Added `resilience_sessions` tool for querying recent session/tool recovery records.
+- Extended the dashboard with session recovery summary metrics and a recovery queue panel.
+- Added dashboard API `/api/session-retries` and verification coverage for session retry aggregation.
+
 ## 0.3.6
 
 - Updated OpenClaw SDK and compatibility metadata for OpenClaw 2026.6.10.

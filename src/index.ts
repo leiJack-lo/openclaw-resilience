@@ -20,6 +20,7 @@ import {
   classifyError,
   classifySessionError,
   categoryLabel,
+  sessionCategoryLabel,
 } from "./error-classifier.js";
 import {
   bootstrapResilience,
@@ -32,6 +33,7 @@ import type {
   LogEntry,
   ErrorCategory,
   ClassifiedError,
+  SessionRetryRecord,
 } from "./types.js";
 
 /**
@@ -230,6 +232,36 @@ function formatRecoverySettings(settings: {
   ].join("\n");
 }
 
+function formatSessionRetrySummary(records: SessionRetryRecord[]): string {
+  const rt = requireRuntime();
+  const summary = rt.sessionRetries.getSummary(records);
+  let out = "## Session / Task Recovery Queue\n\n";
+  out += `- Total records: ${summary.total}\n`;
+  out += `- Pending recovery: ${summary.pending}\n`;
+  out += `- Retryable: ${summary.retryable}\n`;
+  out += `- Manual required: ${summary.manualRequired}\n\n`;
+
+  if (records.length === 0) {
+    out += "No session/task recovery records yet.";
+    return out;
+  }
+
+  out += "### Recent Records\n\n";
+  for (const record of records.slice(0, 20)) {
+    const label = sessionCategoryLabel(record.category);
+    const target =
+      record.toolName ??
+      record.taskId ??
+      record.runId ??
+      record.sessionKey ??
+      "session";
+    out += `- **${label}** · ${record.status} · ${target} · attempt ${record.attempt}/${record.maxAttempts}\n`;
+    out += `  ${record.errorMessage.slice(0, 160)}\n`;
+  }
+
+  return out;
+}
+
 /**
  * Process an API call result: classify, log, record stats, check retry.
  */
@@ -312,7 +344,10 @@ function recordSessionError(params: {
   runId?: string;
   provider?: string;
   model?: string;
-}): ClassifiedError | null {
+  source?: SessionRetryRecord["source"];
+  toolName?: string;
+  taskId?: string;
+}): { apiError: ClassifiedError; retryRecord: SessionRetryRecord } | null {
   const rt = getRuntime();
   if (!rt) return null;
 
@@ -352,7 +387,17 @@ function recordSessionError(params: {
     rt.taskRecovery.failTask(taskKey, classified, "agent_end");
   }
 
-  return classified;
+  const retryRecord = rt.sessionRetries.recordFailure({
+    source: params.source ?? "agent_end",
+    error: params.error,
+    sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
+    runId: params.runId,
+    toolName: params.toolName,
+    taskId: params.taskId,
+  });
+
+  return { apiError: classified, retryRecord };
 }
 
 async function enqueueSessionRecovery(params: {
@@ -360,6 +405,7 @@ async function enqueueSessionRecovery(params: {
   sessionKey: string;
   runId?: string;
   error: ClassifiedError;
+  retryRecordId?: string;
 }): Promise<boolean> {
   const rt = getRuntime();
   if (!rt) return false;
@@ -408,8 +454,41 @@ async function enqueueSessionRecovery(params: {
       lastInjectedAt: now,
       count: current.count + 1,
     });
+    if (params.retryRecordId) {
+      rt.sessionRetries.markInjected(params.retryRecordId);
+    }
+  } else if (params.retryRecordId) {
+    rt.sessionRetries.markSkipped(params.retryRecordId);
   }
   return result.enqueued;
+}
+
+function toolResultLooksFailed(event: {
+  result?: unknown;
+  error?: unknown;
+}): { failed: boolean; message?: unknown } {
+  if (event.error) return { failed: true, message: event.error };
+  const result = event.result;
+  if (typeof result !== "object" || result === null) {
+    return { failed: false };
+  }
+
+  const obj = result as Record<string, unknown>;
+  const exitCode =
+    typeof obj.exitCode === "number"
+      ? obj.exitCode
+      : typeof obj.code === "number"
+        ? obj.code
+        : undefined;
+
+  if (obj.isError === true || obj.success === false || obj.ok === false) {
+    return { failed: true, message: obj.error ?? obj.stderr ?? obj.message ?? result };
+  }
+  if (exitCode !== undefined && exitCode !== 0) {
+    return { failed: true, message: obj.stderr ?? obj.error ?? obj.message ?? `exit code ${exitCode}` };
+  }
+
+  return { failed: false };
 }
 
 function resolveNextTurnInjectionQueue(
@@ -878,6 +957,52 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
       },
     });
 
+    // ─── Tool: resilience_sessions ──────────────────────────────────
+
+    api.registerTool({
+      name: "resilience_sessions",
+      label: "Resilience Sessions",
+      description:
+        "View agent session and tool failure recovery records, separate from " +
+        "LLM API retry statistics.",
+      parameters: Type.Object({
+        action: Type.Optional(
+          Type.String({ description: 'Action: "summary" (default) or "list"' })
+        ),
+        limit: Type.Optional(
+          Type.Number({ description: "Maximum records to return" })
+        ),
+      }),
+      async execute(_toolCallId, params) {
+        const { sessionRetries } = requireRuntime();
+        const p = params as Record<string, unknown>;
+        const action = (p.action as string | undefined) ?? "summary";
+        const limit = Number(p.limit ?? 50);
+        const records = sessionRetries.list(Number.isFinite(limit) ? limit : 50);
+
+        switch (action) {
+          case "summary":
+          case "list":
+            return {
+              content: [
+                { type: "text", text: formatSessionRetrySummary(records) },
+              ],
+              details: {
+                summary: sessionRetries.getSummary(records),
+                records,
+              },
+            };
+          default:
+            return {
+              content: [
+                { type: "text", text: `Unknown action: ${action}` },
+              ],
+              details: null,
+            };
+        }
+      },
+    });
+
     // ─── Tool: resilience_report ──────────────────────────────────────
 
     api.registerTool({
@@ -898,7 +1023,8 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
         ),
       }),
       async execute(_toolCallId, params) {
-        const { logger, stats, retryEngine, taskRecovery } = requireRuntime();
+        const { logger, stats, retryEngine, taskRecovery, sessionRetries } =
+          requireRuntime();
         const p = params as Record<string, unknown>;
         const reportType = (p.reportType as string) ?? "daily";
         const target = p.target as string | undefined;
@@ -947,11 +1073,17 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
             const tasks = taskRecovery.getAllTasks();
             const failed = tasks.filter((t) => t.status === "failed");
             const recovering = tasks.filter((t) => t.status === "recovering");
+            const sessionRecords = sessionRetries.list(20);
+            const sessionSummary = sessionRetries.getSummary(sessionRecords);
 
             let output = "## Task Recovery Status\n\n";
             output += `- Total tasks: ${tasks.length}\n`;
             output += `- Failed (recoverable): ${failed.length}\n`;
             output += `- Currently recovering: ${recovering.length}\n\n`;
+            output += "### Session / Tool Recovery Queue\n\n";
+            output += `- Recent records: ${sessionSummary.total}\n`;
+            output += `- Pending recovery: ${sessionSummary.pending}\n`;
+            output += `- Manual required: ${sessionSummary.manualRequired}\n\n`;
 
             if (failed.length > 0) {
               output += "### Failed Tasks\n\n";
@@ -962,7 +1094,13 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
 
             return {
               content: [{ type: "text", text: output }],
-              details: { tasks, failed, recovering },
+              details: {
+                tasks,
+                failed,
+                recovering,
+                sessionRetries: sessionRecords,
+                sessionRetriesSummary: sessionSummary,
+              },
             };
           }
 
@@ -972,6 +1110,8 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
             const strategies = retryEngine.getStrategies();
             const failedTasks = taskRecovery.getRecoverableTasks();
             const activeRetries = retryEngine.getActiveRetries();
+            const sessionRecords = sessionRetries.list(20);
+            const sessionSummary = sessionRetries.getSummary(sessionRecords);
 
             let output = "## Resilience Full Report\n\n";
             output += `**Generated:** ${new Date().toISOString()}\n\n`;
@@ -1001,6 +1141,13 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
               output += "No failed tasks.\n";
             }
 
+            output += "\n### Session / Tool Recovery Queue\n\n";
+            output += `- Pending recovery: ${sessionSummary.pending}\n`;
+            output += `- Manual required: ${sessionSummary.manualRequired}\n`;
+            for (const record of sessionRecords.slice(0, 5)) {
+              output += `- ${sessionCategoryLabel(record.category)}: ${record.status} (${record.source})\n`;
+            }
+
             output += `\n### Configured Strategies (${strategies.length})\n\n`;
             for (const s of strategies) {
               output += `- ${s.name} (${s.type}, max ${s.maxRetries} retries)\n`;
@@ -1014,6 +1161,8 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
                 strategies,
                 failedTasks,
                 activeRetries: Object.fromEntries(activeRetries),
+                sessionRetries: sessionRecords,
+                sessionRetriesSummary: sessionSummary,
               },
             };
           }
@@ -1101,7 +1250,7 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
           `[resilience] Agent ended with error (session: ${ctx.sessionKey}, run: ${runId})`
         );
 
-        const classified = recordSessionError({
+        const recorded = recordSessionError({
           error: event.error ?? "agent ended without success",
           durationMs: event.durationMs ?? 0,
           sessionId: ctx.sessionId,
@@ -1122,13 +1271,18 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
             }
           }
 
-          if (classified) {
+          if (
+            recorded?.apiError &&
+            recorded.retryRecord.retryable &&
+            recorded.retryRecord.recoveryMode === "next_turn_injection"
+          ) {
             try {
               const enqueued = await enqueueSessionRecovery({
                 api,
                 sessionKey: ctx.sessionKey,
                 runId,
-                error: classified,
+                error: recorded.apiError,
+                retryRecordId: recorded.retryRecord.id,
               });
               api.logger.info(
                 enqueued
@@ -1142,6 +1296,60 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
             }
           }
         }
+      }
+    });
+
+    /**
+     * Hook: after_tool_call
+     * Track tool-level failures that can interrupt an agent's work even when
+     * the model API itself is healthy.
+     */
+    api.on("after_tool_call", async (event, ctx) => {
+      const result = toolResultLooksFailed(event);
+      if (!result.failed) return;
+
+      const sessionKey = ctx.sessionKey;
+      const sessionId = (ctx as { sessionId?: string }).sessionId;
+      const runId = event.runId ?? (ctx as { runId?: string }).runId;
+      const error = result.message ?? `${event.toolName} failed`;
+
+      const recorded = recordSessionError({
+        error,
+        durationMs: event.durationMs ?? 0,
+        sessionId,
+        sessionKey,
+        runId,
+        source: "after_tool_call",
+        toolName: event.toolName,
+        taskId: event.toolCallId,
+      });
+
+      if (
+        !sessionKey ||
+        !recorded?.apiError ||
+        !recorded.retryRecord.retryable ||
+        recorded.retryRecord.recoveryMode !== "next_turn_injection"
+      ) {
+        return;
+      }
+
+      try {
+        const enqueued = await enqueueSessionRecovery({
+          api,
+          sessionKey,
+          runId,
+          error: recorded.apiError,
+          retryRecordId: recorded.retryRecord.id,
+        });
+        api.logger.info(
+          enqueued
+            ? `[resilience] Queued tool failure recovery for ${event.toolName}`
+            : `[resilience] Tool failure recovery skipped for ${event.toolName}`
+        );
+      } catch (err) {
+        api.logger.warn(
+          `[resilience] Failed to queue tool failure recovery: ${err}`
+        );
       }
     });
 

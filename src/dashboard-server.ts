@@ -140,6 +140,12 @@ export class DashboardServer {
       return;
     }
 
+    if (method === "GET" && url.pathname === "/api/session-retries") {
+      const limit = Number(url.searchParams.get("limit") ?? 100);
+      this.json(res, agg.getSessionRetries(instance ?? "all", Number.isFinite(limit) ? limit : 100));
+      return;
+    }
+
     if (method === "GET" && url.pathname === "/api/strategies") {
       const targetInstance = instance ?? agg.localInstanceId;
       const data = agg.getStrategiesForEdit(targetInstance);
