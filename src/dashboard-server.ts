@@ -11,6 +11,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { InstanceAggregator } from "./instance-aggregator.js";
 import type { RetryStrategy } from "./types.js";
+import { normalizeRetryStrategyUpdate } from "./strategy-normalizer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_ROOT = path.join(__dirname, "..", "skill", "dashboard");
@@ -140,6 +141,12 @@ export class DashboardServer {
       return;
     }
 
+    if (method === "GET" && url.pathname === "/api/session-retries") {
+      const limit = Number(url.searchParams.get("limit") ?? 100);
+      this.json(res, agg.getSessionRetries(instance ?? "all", Number.isFinite(limit) ? limit : 100));
+      return;
+    }
+
     if (method === "GET" && url.pathname === "/api/strategies") {
       const targetInstance = instance ?? agg.localInstanceId;
       const data = agg.getStrategiesForEdit(targetInstance);
@@ -156,7 +163,25 @@ export class DashboardServer {
       }
       const name = decodeURIComponent(url.pathname.replace("/api/strategies/", ""));
       const body = await this.readBody(req);
-      const updates = JSON.parse(body || "{}") as Partial<RetryStrategy>;
+      let updates: Partial<RetryStrategy>;
+      try {
+        updates = normalizeRetryStrategyUpdate(
+          JSON.parse(body || "{}") as Record<string, unknown>
+        );
+      } catch (err) {
+        this.json(
+          res,
+          {
+            ok: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : `invalid strategy update: ${String(err)}`,
+          },
+          400
+        );
+        return;
+      }
       const engine = agg.getLocalRetryEngine();
       if (targetInstance !== agg.localInstanceId) {
         this.json(res, { ok: false, error: "只能修改当前 Gateway 实例的策略" }, 403);

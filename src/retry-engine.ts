@@ -16,6 +16,10 @@ import type {
   ClassifiedError,
   ErrorCategory,
 } from "./types.js";
+import {
+  normalizeRetryStrategy,
+  normalizeRetryStrategyUpdate,
+} from "./strategy-normalizer.js";
 
 const DEFAULT_STRATEGIES_PATH = path.join(
   os.homedir(),
@@ -77,7 +81,7 @@ export class RetryEngine {
         const raw = fs.readFileSync(this.strategiesPath, "utf-8");
         const loaded = JSON.parse(raw) as RetryStrategy[];
         if (Array.isArray(loaded) && loaded.length > 0) {
-          return loaded;
+          return loaded.map(normalizeRetryStrategy);
         }
       }
     } catch {
@@ -235,7 +239,7 @@ export class RetryEngine {
    * Add a new strategy.
    */
   addStrategy(strategy: RetryStrategy): void {
-    this.strategies.push(strategy);
+    this.strategies.push(normalizeRetryStrategy(strategy));
     this.saveStrategies();
   }
 
@@ -245,7 +249,13 @@ export class RetryEngine {
   updateStrategy(name: string, updates: Partial<RetryStrategy>): boolean {
     const idx = this.strategies.findIndex((s) => s.name === name);
     if (idx === -1) return false;
-    this.strategies[idx] = { ...this.strategies[idx], ...updates };
+    const normalized = normalizeRetryStrategyUpdate(
+      updates as Record<string, unknown>
+    );
+    this.strategies[idx] = normalizeRetryStrategy({
+      ...this.strategies[idx],
+      ...normalized,
+    });
     this.saveStrategies();
     return true;
   }

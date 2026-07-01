@@ -13,7 +13,7 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 - 🔁 **任务中断** — 运行中的任务突然失败需要恢复
 - ⚙️ **策略不一** — 不同模型、不同场景需要不同的重试策略
 
-`@leiJack-lo/resilience` 插件为 OpenClaw 提供完整的 API 健康监控和自动重试能力。
+`@leiJack-lo/resilience` 插件为 OpenClaw 提供 API 健康监控、自动重试、会话中断统计和恢复队列能力。
 
 ## 功能
 
@@ -22,9 +22,10 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 - 📈 **多维统计** — 按时间（小时/日/周）和模型统计错误率、耗时
 - 🔁 **灵活重试** — 支持固定间隔、指数退避、自定义时间表三种策略
 - 🔄 **任务恢复** — 任务中断时保存上下文，支持自动恢复
-- 🧭 **会话恢复指令** — 会话运行错误后自动给下一轮注入“检查任务是否完成并继续”的恢复上下文，支持中英文和自定义话术
+- 🧭 **会话/工具恢复队列** — 捕获 agent 会话失败和工具调用失败，区分可自动续做与需人工处理的风险项
+- 🧩 **会话恢复指令** — 会话运行错误后自动给下一轮注入“检查任务是否完成并继续”的恢复上下文，支持中英文和自定义话术
 - 🛠️ **自然语言交互** — 通过 Skill 直接用自然语言查询和管理
-- 🖥️ **Web 监控面板** — 浏览器实时查看错误统计、选择重试方案（5s/60s/5min/1h 刷新）
+- 🖥️ **Web 监控面板** — 浏览器实时查看 API 错误、会话恢复队列和重试方案（5s/60s/5min/1h 刷新）
 - 🔀 **多实例聚合** — 多个 OpenClaw Gateway / workspace 的数据统一在一个面板查看
 
 ## 安装
@@ -144,6 +145,7 @@ npm run build
   stats.json
   strategies.json
   recovery-settings.json
+  session-retries.json
   logs/
   tasks/
   active-retries.json
@@ -228,7 +230,8 @@ resilience_strategies({
   updates: {
     type: "custom",
     maxRetries: 3,
-    intervals: [60000, 300000, 600000],
+    intervals: ["1m", "5分钟", "10m"],
+    cooldownMs: "10s",
     retryOn: ["rate_limit", "server_overload"]
   }
 })
@@ -237,7 +240,7 @@ resilience_strategies({
 resilience_strategies({
   action: "update",
   strategyName: "default-exponential",
-  updates: { maxRetries: 8 }
+  updates: { maxRetries: "8", intervals: "30s, 2m, 5分钟" }
 })
 
 // 重置为默认
@@ -282,6 +285,7 @@ resilience_dashboard({ action: "stop" })
 
 - **`model_call_ended`** — 每次 API 调用结束后自动记录错误、更新统计、检查重试
 - **`agent_end`** — Agent 运行结束时检测会话中断，记录会话错误统计，并在下一轮注入恢复指令
+- **`after_tool_call`** — 工具调用结束后检测失败结果，写入会话/工具恢复队列；不会自动重放工具调用
 
 ## 错误分类
 
@@ -301,11 +305,12 @@ resilience_dashboard({ action: "stop" })
 
 ## 会话恢复设置
 
-当 `agent_end` 报告会话失败时，插件会：
+当 `agent_end` 报告会话失败，或 `after_tool_call` 发现工具调用失败时，插件会：
 
 1. 将错误分类并写入日志/统计。
-2. 为当前 session 创建一条恢复任务记录。
-3. 通过 OpenClaw `enqueueNextTurnInjection` 给下一轮注入恢复指令，例如“任务完成了吗？如果没有，请继续完成任务”。
+2. 为当前 session/tool 创建一条 `session-retries.json` 恢复队列记录。
+3. 对可安全续做的失败，通过 OpenClaw `enqueueNextTurnInjection` 给下一轮注入恢复指令，例如“任务完成了吗？如果没有，请继续完成任务”。
+4. 对权限、配置、shell 解析、外部副作用风险等失败标记为 `manual_required`，只统计和展示，不自动重试。
 
 可直接通过 Skill / 工具修改继续任务话术：
 
@@ -325,6 +330,9 @@ resilience_recovery({
   language: "zh",
   prompt: "刚才任务中断了。请先判断原任务是否完成；如果没完成，请继续把它做完。"
 })
+
+// 查看会话/工具恢复队列
+resilience_sessions({ action: "summary" })
 ```
 
 ## 重试策略
@@ -359,6 +367,14 @@ resilience_recovery({
   "models": ["mimo-v2.5", "gpt-4o"]
 }
 ```
+
+`intervals` 和 `cooldownMs` 最终都会以毫秒数字保存。通过 Skill 调用时可以传：
+
+- 毫秒数字：`60000`
+- 字符串数字：`"60000"`
+- 英文单位：`"30s"`、`"5m"`、`"1h"`
+- 中文单位：`"30秒"`、`"5分钟"`、`"1小时"`
+- 间隔列表：`["30s", "2m"]` 或 `"30s, 2m, 5分钟"`
 
 ## 数据存储
 
@@ -445,7 +461,7 @@ MIT License. 详见 [LICENSE](./LICENSE)。
 - 使用经过审计的 `open` 包（而非原始 `child_process.exec`）打开本地浏览器查看面板。
 - 本地 HTTP Dashboard（默认 127.0.0.1:18765）仅服务静态文件 + 只读 JSON API，无外部访问、无写权限到系统。
 - 所有持久化数据仅在 `~/.openclaw/plugins/resilience/instances/<id>/` 下（用户可随时删除）。
-- Hooks 只观察 `model_call_ended` 和 `agent_end` 用于错误分类/重试/恢复，不修改请求内容。
+- Hooks 只观察 `model_call_ended`、`agent_end` 和 `after_tool_call` 用于错误分类/重试/恢复，不修改请求内容。
 - 源码完全开源 + ClawHub source-linked 验证。
 - 发布时通过 ClawHub 自动化安全扫描（VirusTotal + agentic risk checks）。当前因需要本地执行（浏览器 + 服务器）标记为 suspicious（这是监控类插件的常见情况，非恶意）。我们持续优化以争取 benign 状态。
 

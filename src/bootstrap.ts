@@ -9,6 +9,7 @@ import { TaskRecovery } from "./task-recovery.js";
 import { DashboardServer } from "./dashboard-server.js";
 import { InstanceAggregator } from "./instance-aggregator.js";
 import { RecoverySettings } from "./recovery-settings.js";
+import { SessionRetryStore } from "./session-retry-store.js";
 import {
   resolveInstanceContext,
   touchInstanceMeta,
@@ -30,6 +31,7 @@ export interface ResilienceRuntime {
   retryEngine: RetryEngine;
   taskRecovery: TaskRecovery;
   recoverySettings: RecoverySettings;
+  sessionRetries: SessionRetryStore;
   instanceAggregator: InstanceAggregator;
   dashboardServer: DashboardServer | null;
 }
@@ -89,6 +91,10 @@ export async function bootstrapResilience(
     instancePaths.recoverySettingsPath,
     cfg
   );
+  const sessionRetries = new SessionRetryStore(instancePaths.sessionRetriesPath, {
+    id: instancePaths.id,
+    label: instancePaths.label,
+  });
   const instanceAggregator = new InstanceAggregator(instancePaths);
 
   retryEngine.onActiveRetriesChanged = (states) => {
@@ -107,6 +113,7 @@ export async function bootstrapResilience(
     retryEngine,
     taskRecovery,
     recoverySettings,
+    sessionRetries,
     instanceAggregator,
     dashboardServer: runtime?.dashboardServer ?? null,
   };
@@ -149,6 +156,7 @@ export async function runGatewayStartup(
   rt.logger.cleanup(rt.pluginConfig.statsRetentionDays ?? 90);
   rt.stats.cleanup(7);
   rt.taskRecovery.cleanup(7 * 24 * 60 * 60 * 1000);
+  rt.sessionRetries.cleanup(14 * 24 * 60 * 60 * 1000);
   logger?.info("[resilience] Gateway startup complete");
 }
 

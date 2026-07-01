@@ -36,6 +36,7 @@ export interface InstancePaths {
   metaPath: string;
   activeRetriesPath: string;
   recoverySettingsPath: string;
+  sessionRetriesPath: string;
 }
 
 export interface InstanceInfo extends InstanceMeta {
@@ -117,6 +118,7 @@ export function getInstancePaths(
     metaPath: path.join(root, "meta.json"),
     activeRetriesPath: path.join(root, "active-retries.json"),
     recoverySettingsPath: path.join(root, "recovery-settings.json"),
+    sessionRetriesPath: path.join(root, "session-retries.json"),
   };
 }
 
@@ -217,6 +219,7 @@ export function discoverInstances(): InstanceInfo[] {
     legacy.strategiesPath = path.join(RESILIENCE_ROOT, "strategies.json");
     legacy.tasksDir = path.join(RESILIENCE_ROOT, "tasks");
     legacy.recoverySettingsPath = path.join(RESILIENCE_ROOT, "recovery-settings.json");
+    legacy.sessionRetriesPath = path.join(RESILIENCE_ROOT, "session-retries.json");
     legacy.root = RESILIENCE_ROOT;
     add(legacy, true);
   }
@@ -246,6 +249,10 @@ export function migrateLegacyToDefault(): boolean {
   copyFile(
     path.join(RESILIENCE_ROOT, "strategies.json"),
     target.strategiesPath
+  );
+  copyFile(
+    path.join(RESILIENCE_ROOT, "session-retries.json"),
+    target.sessionRetriesPath
   );
 
   const legacyLogs = path.join(RESILIENCE_ROOT, "logs");

@@ -100,7 +100,7 @@ try {
   await handlers.get("agent_end")(
     {
       success: false,
-      error: "unexpected token while parsing model output",
+      error: "tokenizer token parse failure while reading model output",
       durationMs: 1234,
       runId: "run-1",
     },
@@ -113,11 +113,36 @@ try {
     }
   );
 
+  await handlers.get("after_tool_call")(
+    {
+      toolName: "exec_command",
+      toolCallId: "tool-call-1",
+      runId: "run-2",
+      result: {
+        exitCode: 2,
+        stderr: "zsh: parse error near `newline'",
+      },
+      durationMs: 20,
+    },
+    {
+      sessionId: "session-id-1",
+      sessionKey: "session-key-1",
+      runId: "run-2",
+      toolName: "exec_command",
+      toolCallId: "tool-call-1",
+    }
+  );
+
   if (!toolNames.includes("resilience_recovery")) {
     throw new Error("resilience_recovery tool was not registered");
   }
+  if (!toolNames.includes("resilience_sessions")) {
+    throw new Error("resilience_sessions tool was not registered");
+  }
   if (injections.length !== 1) {
-    throw new Error(`expected one recovery injection, got ${injections.length}`);
+    throw new Error(
+      `expected one recovery injection for retryable agent_end, got ${injections.length}`
+    );
   }
   if (injections[0].sessionKey !== "session-key-1") {
     throw new Error("recovery injection sessionKey mismatch");
@@ -145,6 +170,28 @@ try {
   }
   if (model.errorsByType.token_parse_error !== 1) {
     throw new Error("agent_end failure was not classified as token_parse_error");
+  }
+
+  const sessionRetriesPath = path.join(
+    os.homedir(),
+    ".openclaw",
+    "plugins",
+    "resilience",
+    "instances",
+    "verify-session-recovery",
+    "session-retries.json"
+  );
+  const sessionRetries = JSON.parse(fs.readFileSync(sessionRetriesPath, "utf-8"));
+  if (sessionRetries.length !== 2) {
+    throw new Error(`expected two session retry records, got ${sessionRetries.length}`);
+  }
+  const shellRecord = sessionRetries.find((r) => r.category === "shell_parse_error");
+  if (!shellRecord || shellRecord.status !== "manual_required") {
+    throw new Error("tool shell parse failure was not recorded as manual_required");
+  }
+  const injectedRecord = sessionRetries.find((r) => r.status === "injected");
+  if (!injectedRecord) {
+    throw new Error("agent_end retry record was not marked injected");
   }
 
   const activeRetries = getRuntime().retryEngine.getActiveRetries();

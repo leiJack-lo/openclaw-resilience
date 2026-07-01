@@ -8,6 +8,8 @@
 import {
   type ErrorCategory,
   type ClassifiedError,
+  type SessionErrorCategory,
+  type SessionRecoveryMode,
   STATUS_MAP,
   ERROR_PATTERNS,
 } from "./types.js";
@@ -143,6 +145,100 @@ export function classifySessionError(
   };
 }
 
+export interface ClassifiedSessionTaskError {
+  category: SessionErrorCategory;
+  rawError: string;
+  retryable: boolean;
+  recoveryMode: SessionRecoveryMode;
+}
+
+const SESSION_TASK_PATTERNS: Array<{
+  pattern: RegExp;
+  category: SessionErrorCategory;
+  retryable: boolean;
+  recoveryMode: SessionRecoveryMode;
+}> = [
+  {
+    pattern: /this operation was aborted|openclawabort|operation aborted|aborted/i,
+    category: "prompt_aborted",
+    retryable: true,
+    recoveryMode: "next_turn_injection",
+  },
+  {
+    pattern: /session.*takeover|takeover|session file changed|lock.*released|EmbeddedAttemptSessionTakeoverError/i,
+    category: "session_takeover",
+    retryable: true,
+    recoveryMode: "next_turn_injection",
+  },
+  {
+    pattern: /timed?\s*out|timeout|deadline exceeded/i,
+    category: "task_timeout",
+    retryable: true,
+    recoveryMode: "next_turn_injection",
+  },
+  {
+    pattern: /parse error near|syntax error|unexpected token|zsh:|bash:|fish:|command not found/i,
+    category: "shell_parse_error",
+    retryable: false,
+    recoveryMode: "manual",
+  },
+  {
+    pattern: /permission denied|operation not permitted|eacces|eperm|not authorized|requires approval/i,
+    category: "permission_denied",
+    retryable: false,
+    recoveryMode: "manual",
+  },
+  {
+    pattern: /config(?:uration)?|invalid config|missing config|yaml|toml/i,
+    category: "config_error",
+    retryable: false,
+    recoveryMode: "manual",
+  },
+  {
+    pattern: /browser|playwright|locator|navigation|page\.|cdp|chrome/i,
+    category: "browser_workflow_failed",
+    retryable: true,
+    recoveryMode: "next_turn_injection",
+  },
+  {
+    pattern: /publish|delete|remove|credential|secret|api key|access token|bearer token|permission expansion|external send/i,
+    category: "external_side_effect_risk",
+    retryable: false,
+    recoveryMode: "manual",
+  },
+  {
+    pattern: /exit code [1-9]|non[- ]zero|tool.*failed|exec.*failed|failed/i,
+    category: "tool_execution_failed",
+    retryable: true,
+    recoveryMode: "next_turn_injection",
+  },
+];
+
+/**
+ * Classify agent/session/tool failures into recovery policy buckets.
+ */
+export function classifySessionTaskError(error: unknown): ClassifiedSessionTaskError {
+  const rawError = extractMessage(error);
+
+  for (const item of SESSION_TASK_PATTERNS) {
+    if (item.pattern.test(rawError)) {
+      return {
+        category: item.category,
+        rawError,
+        retryable: item.retryable,
+        recoveryMode: item.recoveryMode,
+      };
+    }
+  }
+
+  return {
+    category: "unknown_session_error",
+    rawError,
+    retryable: true,
+    recoveryMode: "next_turn_injection",
+  };
+}
+
 /**
  * Extract a human-readable error message from various error types.
  */
@@ -204,6 +300,22 @@ export function categoryLabel(category: ErrorCategory): string {
     invalid_model_output: "Invalid Model Output",
     session_runtime_error: "Session Runtime Error",
     unknown: "Unknown Error",
+  };
+  return labels[category];
+}
+
+export function sessionCategoryLabel(category: SessionErrorCategory): string {
+  const labels: Record<SessionErrorCategory, string> = {
+    prompt_aborted: "Prompt Aborted",
+    tool_execution_failed: "Tool Execution Failed",
+    shell_parse_error: "Shell Parse Error",
+    session_takeover: "Session Takeover",
+    task_timeout: "Task Timeout",
+    browser_workflow_failed: "Browser Workflow Failed",
+    permission_denied: "Permission Denied",
+    config_error: "Config Error",
+    external_side_effect_risk: "External Side Effect Risk",
+    unknown_session_error: "Unknown Session Error",
   };
   return labels[category];
 }
