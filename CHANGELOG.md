@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Changed retry duration display in the dashboard and tool reports from raw milliseconds to human-readable units such as `30s`, `2分钟`, and `1小时`.
+- Kept strategy persistence in milliseconds so retry scheduling remains precise while the UI stays readable.
+
 ## 0.5.0
 
 - Fixed retry strategy updates from skills/dashboard when time fields are passed as strings or unit-bearing values.

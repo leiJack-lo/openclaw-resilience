@@ -1,6 +1,6 @@
 {
   "name": "@leiJack-lo/resilience",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "LLM API and agent session error tracking, classification, retry, and recovery dashboard plugin for OpenClaw",
   "type": "module",
   "main": "./dist/index.js",
