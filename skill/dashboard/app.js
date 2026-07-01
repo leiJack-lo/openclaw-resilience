@@ -53,10 +53,17 @@ function qs() {
 function formatMs(ms) {
   if (!Number.isFinite(Number(ms)) || Number(ms) < 0) return "invalid";
   ms = Number(ms);
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
-  return `${(ms / 3_600_000).toFixed(1)}h`;
+  if (ms === 0) return "0s";
+  if (ms < 60_000) {
+    const seconds = ms / 1000;
+    return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)}s`;
+  }
+  if (ms < 3_600_000) {
+    const minutes = ms / 60_000;
+    return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)}分钟`;
+  }
+  const hours = ms / 3_600_000;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}小时`;
 }
 
 function toast(msg) {
