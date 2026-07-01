@@ -230,7 +230,8 @@ resilience_strategies({
   updates: {
     type: "custom",
     maxRetries: 3,
-    intervals: [60000, 300000, 600000],
+    intervals: ["1m", "5分钟", "10m"],
+    cooldownMs: "10s",
     retryOn: ["rate_limit", "server_overload"]
   }
 })
@@ -239,7 +240,7 @@ resilience_strategies({
 resilience_strategies({
   action: "update",
   strategyName: "default-exponential",
-  updates: { maxRetries: 8 }
+  updates: { maxRetries: "8", intervals: "30s, 2m, 5分钟" }
 })
 
 // 重置为默认
@@ -366,6 +367,14 @@ resilience_sessions({ action: "summary" })
   "models": ["mimo-v2.5", "gpt-4o"]
 }
 ```
+
+`intervals` 和 `cooldownMs` 最终都会以毫秒数字保存。通过 Skill 调用时可以传：
+
+- 毫秒数字：`60000`
+- 字符串数字：`"60000"`
+- 英文单位：`"30s"`、`"5m"`、`"1h"`
+- 中文单位：`"30秒"`、`"5分钟"`、`"1小时"`
+- 间隔列表：`["30s", "2m"]` 或 `"30s, 2m, 5分钟"`
 
 ## 数据存储
 

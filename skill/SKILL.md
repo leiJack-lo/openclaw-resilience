@@ -124,12 +124,19 @@ View, add, update, or reset retry strategies.
 **Parameters:**
 - `action`: `"list"` (default) | `"add"` | `"update"` | `"reset"`
 - `strategyName`: Strategy name (required for add/update)
-- `updates`: Fields to update (for add/update)
+- `updates`: Fields to update (for add/update). Use these shapes:
+  - `type`: `"fixed"` | `"exponential"` | `"custom"`
+  - `maxRetries`: number or numeric string, e.g. `3` or `"3"`
+  - `intervals`: millisecond numbers or duration strings, e.g. `[60000, 300000]`, `["30s", "2m"]`, or `"30s, 2m, 5分钟"`
+  - `cooldownMs`: millisecond number or duration string, e.g. `10000`, `"10s"`, `"10秒"`
+  - `retryOn`: array or comma-separated string of error categories
+  - `models`: array or comma-separated string of model names
 
 **Examples:**
 - "查看当前所有策略配置" → `resilience_strategies({ action: "list" })`
 - "修改超时重试策略为指数退避" → `resilience_strategies({ action: "update", strategyName: "default-exponential", updates: { type: "exponential" } })`
-- "添加一个自定义重试策略" → `resilience_strategies({ action: "add", strategyName: "my-strategy", updates: { type: "custom", maxRetries: 3, intervals: [60000, 300000, 600000] } })`
+- "添加一个自定义重试策略" → `resilience_strategies({ action: "add", strategyName: "my-strategy", updates: { type: "custom", maxRetries: 3, intervals: ["1m", "5分钟", "10m"], cooldownMs: "10s" } })`
+- "把默认策略间隔改成 30 秒、2 分钟、5 分钟" → `resilience_strategies({ action: "update", strategyName: "default-exponential", updates: { intervals: "30s, 2m, 5分钟" } })`
 - "重置策略为默认" → `resilience_strategies({ action: "reset" })`
 
 ### resilience_report

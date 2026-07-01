@@ -1,6 +1,6 @@
 {
   "name": "@leiJack-lo/resilience",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "LLM API and agent session error tracking, classification, retry, and recovery dashboard plugin for OpenClaw",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,7 +19,8 @@
     "clean": "rm -rf dist",
     "verify:dashboard": "npm run build && node scripts/verify-dashboard.mjs",
     "verify:config": "npm run build && node scripts/verify-plugin-config.mjs",
-    "verify:session-recovery": "npm run build && node scripts/verify-session-recovery.mjs"
+    "verify:session-recovery": "npm run build && node scripts/verify-session-recovery.mjs",
+    "verify:strategies": "npm run build && node scripts/verify-strategy-normalization.mjs"
   },
   "openclaw": {
     "extensions": [

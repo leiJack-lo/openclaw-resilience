@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API and agent session error tracking, classification, retry, and task recovery. REQUIRES the @leiJack-lo/resilience plugin (install plugin first, then this skill). Provides Chinese natural language interface only; core tools + hooks + dashboard server come from the plugin.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "leiJack-lo",
   "license": "MIT",
   "plugin": "resilience",
@@ -30,6 +30,11 @@
         "intent": "修改超时重试策略为指数退避",
         "tool": "resilience_strategies",
         "params": { "action": "update", "strategyName": "default-exponential", "updates": { "type": "exponential" } }
+      },
+      {
+        "intent": "把默认策略重试间隔改成 30 秒、2 分钟、5 分钟",
+        "tool": "resilience_strategies",
+        "params": { "action": "update", "strategyName": "default-exponential", "updates": { "intervals": "30s, 2m, 5分钟", "cooldownMs": "10s" } }
       },
       {
         "intent": "查看当前所有策略配置",

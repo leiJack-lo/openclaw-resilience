@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API and agent session error tracking, classification, retry, and recovery dashboard",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "leiJack-lo",
   "license": "MIT",
   "contracts": {

@@ -51,6 +51,8 @@ function qs() {
 }
 
 function formatMs(ms) {
+  if (!Number.isFinite(Number(ms)) || Number(ms) < 0) return "invalid";
+  ms = Number(ms);
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;

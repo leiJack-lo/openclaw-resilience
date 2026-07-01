@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Fixed retry strategy updates from skills/dashboard when time fields are passed as strings or unit-bearing values.
+- Normalized `maxRetries`, `intervals`, `cooldownMs`, `retryOn`, and `models` before persisting strategies so the dashboard no longer renders `NaN`.
+- Added support for duration inputs such as `300000`, `"300000"`, `"30s"`, `"5m"`, `"5分钟"`, `"1h"`, and comma-separated interval strings.
+- Hardened strategy loading so existing string-based strategy files are normalized back to millisecond numbers on load.
+- Added `verify:strategies` regression coverage for the NaN strategy update bug.
+
 ## 0.4.0
 
 - Added a persistent session/tool recovery queue (`session-retries.json`) for agent-level failures that are not LLM API errors.

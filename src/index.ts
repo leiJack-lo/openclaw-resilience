@@ -29,6 +29,10 @@ import {
   runGatewayStartup,
   shutdownResilience,
 } from "./bootstrap.js";
+import {
+  normalizeRetryStrategy,
+  normalizeRetryStrategyUpdate,
+} from "./strategy-normalizer.js";
 import type {
   LogEntry,
   ErrorCategory,
@@ -73,6 +77,7 @@ const sessionRecoveryState = new Map<
 >();
 
 function formatMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "invalid";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
@@ -710,29 +715,46 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
                 details: null,
               };
             }
-            const updates = (p.updates as Record<string, unknown>) ?? {};
-            const newStrategy = {
-              name,
-              type: (updates.type as "fixed" | "exponential" | "custom") ?? "exponential",
-              maxRetries: (updates.maxRetries as number) ?? 5,
-              intervals: (updates.intervals as number[]) ?? [60_000],
-              retryOn: (updates.retryOn as ErrorCategory[]) ?? [
-                "rate_limit",
-                "server_overload",
-              ],
-              cooldownMs: (updates.cooldownMs as number) ?? 10_000,
-              models: updates.models as string[] | undefined,
-            };
-            retryEngine.addStrategy(newStrategy);
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Strategy "${newStrategy.name}" added successfully.`,
-                },
-              ],
-              details: newStrategy,
-            };
+            try {
+              const updates = normalizeRetryStrategyUpdate(
+                ((p.updates as Record<string, unknown>) ?? {})
+              );
+              const newStrategy = normalizeRetryStrategy({
+                name,
+                type: updates.type ?? "exponential",
+                maxRetries: updates.maxRetries ?? 5,
+                intervals: updates.intervals ?? [60_000],
+                retryOn: updates.retryOn ?? [
+                  "rate_limit",
+                  "server_overload",
+                ],
+                cooldownMs: updates.cooldownMs ?? 10_000,
+                ...(updates.models ? { models: updates.models } : {}),
+                ...(updates.isDefault !== undefined
+                  ? { isDefault: updates.isDefault }
+                  : {}),
+              });
+              retryEngine.addStrategy(newStrategy);
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Strategy "${newStrategy.name}" added successfully.`,
+                  },
+                ],
+                details: newStrategy,
+              };
+            } catch (err) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Error: invalid strategy updates. ${err instanceof Error ? err.message : String(err)}`,
+                  },
+                ],
+                details: null,
+              };
+            }
           }
 
           case "update": {
@@ -749,18 +771,31 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
                 details: null,
               };
             }
-            const ok = retryEngine.updateStrategy(sName, u);
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: ok
-                    ? `Strategy "${sName}" updated.`
-                    : `Strategy "${sName}" not found.`,
-                },
-              ],
-              details: ok,
-            };
+            try {
+              const normalized = normalizeRetryStrategyUpdate(u);
+              const ok = retryEngine.updateStrategy(sName, normalized);
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: ok
+                      ? `Strategy "${sName}" updated.`
+                      : `Strategy "${sName}" not found.`,
+                  },
+                ],
+                details: { ok, updates: normalized },
+              };
+            } catch (err) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Error: invalid strategy updates. ${err instanceof Error ? err.message : String(err)}`,
+                  },
+                ],
+                details: null,
+              };
+            }
           }
 
           case "reset": {
