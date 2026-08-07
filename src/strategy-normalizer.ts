@@ -29,6 +29,7 @@ const ERROR_CATEGORIES = new Set<ErrorCategory>([
   "token_parse_error",
   "invalid_model_output",
   "session_runtime_error",
+  "wrapped_api_error",
   "unknown",
 ]);
 

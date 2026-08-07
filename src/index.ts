@@ -112,6 +112,33 @@ function stableRetryOperationKey(params: {
   return `${params.sessionKey ?? "unknown-session"}:${runPart}`;
 }
 
+function scheduleApiRetry(params: {
+  sessionKey?: string;
+  runId?: string;
+  provider?: string;
+  model?: string;
+  classified: ClassifiedError;
+  logger: { info: (msg: string) => void };
+}): void {
+  if (!params.classified.retryable) return;
+  const rt = getRuntime();
+  if (!rt) return;
+
+  const opKey = stableRetryOperationKey({
+    sessionKey: params.sessionKey,
+    runId: params.runId,
+    provider: params.provider,
+    model: params.model,
+    category: params.classified.category,
+  });
+  const retryResult = rt.retryEngine.shouldRetry(opKey, params.classified);
+  if (retryResult.retry) {
+    params.logger.info(
+      `[resilience] Scheduling retry #${retryResult.attempt} for ${params.classified.category} in ${formatMs(retryResult.delayMs)}`
+    );
+  }
+}
+
 function formatTimeStats(
   s: {
     period: string;
@@ -1232,6 +1259,8 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
     /**
      * Hook: model_call_ended
      * Observe every API call result and record it.
+     * Also classifies local-wrapper body errors that surface without a non-2xx
+     * HTTP status (OpenClaw may only provide errorCategory / failureKind).
      */
     api.on("model_call_ended", async (event, ctx) => {
       const durationMs = event.durationMs ?? 0;
@@ -1240,15 +1269,33 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
       const outcome = event.outcome;
       const errorCategory = event.errorCategory;
       const failureKind = event.failureKind;
-      const sessionId = ctx.sessionId;
+      const sessionId = ctx.sessionId ?? event.sessionId;
+      const sessionKey = ctx.sessionKey ?? event.sessionKey;
       const runId = event.runId;
       const httpStatus = (event as { httpStatus?: number; status?: number })
         .httpStatus ?? (event as { status?: number }).status;
 
-      // Build an error object if the call failed
+      // Build an error object if the call failed. Prefer the richest signal
+      // available: category string, failure kind, and any optional message
+      // fields some host builds may attach outside the typed contract.
       let errorObj: unknown = undefined;
       if (outcome === "error") {
-        errorObj = new Error(errorCategory ?? failureKind ?? "unknown error");
+        const hostMessage = (event as { errorMessage?: string; message?: string; error?: unknown })
+          .errorMessage
+          ?? (event as { message?: string }).message
+          ?? (event as { error?: unknown }).error;
+        const parts = [
+          typeof hostMessage === "string" ? hostMessage : undefined,
+          errorCategory,
+          failureKind,
+        ].filter((p): p is string => Boolean(p && String(p).trim()));
+        errorObj =
+          parts.length > 0
+            ? new Error(parts.join(" | "))
+            : new Error("unknown model call error");
+        if (hostMessage && typeof hostMessage === "object") {
+          errorObj = hostMessage;
+        }
       }
 
       const classified = processCallResult({
@@ -1263,25 +1310,23 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
 
       // If error is retryable, check retry strategy
       if (classified?.retryable) {
-        const opKey = stableRetryOperationKey({
-          sessionKey: ctx.sessionKey,
+        scheduleApiRetry({
+          sessionKey,
           runId,
           provider,
           model,
-          category: classified.category,
+          classified,
+          logger: api.logger,
         });
-        const retryResult = getRuntime()!.retryEngine.shouldRetry(opKey, classified);
-        if (retryResult.retry) {
-          api.logger.info(
-            `[resilience] Scheduling retry #${retryResult.attempt} for ${classified.category} in ${formatMs(retryResult.delayMs)}`
-          );
-        }
       }
     });
 
     /**
      * Hook: agent_end
      * Check for interrupted tasks that might need recovery.
+     * When a local LLM wrapper returned HTTP 200 + error body, the failure
+     * often surfaces here with the body text rather than as a clean HTTP error
+     * on model_call_ended — classify and schedule API retries in that case.
      */
     api.on("agent_end", async (event, ctx) => {
       const success = event.success;
@@ -1292,8 +1337,9 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
           `[resilience] Agent ended with error (session: ${ctx.sessionKey}, run: ${runId})`
         );
 
+        const failure = event.error ?? "agent ended without success";
         const recorded = recordSessionError({
-          error: event.error ?? "agent ended without success",
+          error: failure,
           durationMs: event.durationMs ?? 0,
           sessionId: ctx.sessionId,
           sessionKey: ctx.sessionKey,
@@ -1301,6 +1347,31 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
           provider: ctx.modelProviderId,
           model: ctx.modelId,
         });
+
+        // API-shaped / wrapped-body failures: also drive the API retry engine
+        // so dashboard active-retries and strategies apply. Skip when
+        // model_call_ended already registered the same run to avoid burning
+        // two attempts for one failure.
+        if (recorded?.apiError?.retryable) {
+          const rt = getRuntime();
+          const opKey = stableRetryOperationKey({
+            sessionKey: ctx.sessionKey,
+            runId,
+            provider: ctx.modelProviderId,
+            model: ctx.modelId,
+            category: recorded.apiError.category,
+          });
+          if (!rt?.retryEngine.getState(opKey)) {
+            scheduleApiRetry({
+              sessionKey: ctx.sessionKey,
+              runId,
+              provider: ctx.modelProviderId,
+              model: ctx.modelId,
+              classified: recorded.apiError,
+              logger: api.logger,
+            });
+          }
+        }
 
         // Check for recoverable tasks in this session
         if (ctx.sessionKey) {

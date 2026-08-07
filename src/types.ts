@@ -17,24 +17,87 @@ export type ErrorCategory =
   | "token_parse_error"
   | "invalid_model_output"
   | "session_runtime_error"
+  /** Local/wrapped gateway returned misleading HTTP status but body carries a transient API error */
+  | "wrapped_api_error"
   | "unknown";
 
 /** HTTP status code to error category mapping */
 export const STATUS_MAP: Record<number, ErrorCategory> = {
   429: "rate_limit",
   503: "server_overload",
+  502: "server_overload",
+  500: "server_overload",
+  504: "timeout",
+  408: "timeout",
+  529: "server_overload",
   401: "auth_failed",
   403: "auth_failed",
 };
 
-/** Error patterns (regex) to error category mapping */
+/**
+ * Error patterns (regex) to error category mapping.
+ * Order matters: more specific body/wrapper signals come first so that
+ * HTTP-200-with-error-body cases still classify as retryable categories.
+ */
 export const ERROR_PATTERNS: Array<{ pattern: RegExp; category: ErrorCategory }> = [
-  { pattern: /timeout|timed?\s*out|ETIMEDOUT/i, category: "timeout" },
-  { pattern: /ECONNREFUSED|ECONNRESET|ENOTFOUND|network/i, category: "network_error" },
-  { pattern: /model\s+not\s+found|does not exist|unavailable/i, category: "model_unavailable" },
-  { pattern: /context\s+(length|too|exceed|long)|max\s+tokens/i, category: "context_too_long" },
-  { pattern: /token(?:izer)?|parse token|invalid token|unexpected token/i, category: "token_parse_error" },
-  { pattern: /invalid (?:model )?(?:response|output|format)|malformed|schema|json parse|parse json/i, category: "invalid_model_output" },
+  // Rate limits (HTTP body or text, including Chinese gateway wrappers)
+  {
+    pattern:
+      /rate\s*limit|too many requests|requests per (?:minute|hour|day)|tokens? per (?:minute|hour|day)|\btpm\b|\brpm\b|throttl|quota|429\b|请求过于频繁|调用次数超|频率限制|限流|配额/i,
+    category: "rate_limit",
+  },
+  // Server overload / busy (common for local wrappers that still return 200)
+  {
+    pattern:
+      /server\s*overload|overloaded|service\s*unavailable|capacity|no\s*available\s*(?:instance|worker|slot)|upstream.*(?:busy|fail|error)|502\b|503\b|529\b|系统繁忙|服务繁忙|服务不可用|上游(?:繁忙|失败|错误|异常)|网关(?:错误|超时|异常)|请稍后重试|稍后再试/i,
+    category: "server_overload",
+  },
+  // Timeouts
+  {
+    pattern: /timeout|timed?\s*out|ETIMEDOUT|deadline exceeded|504\b|408\b|请求超时|响应超时|连接超时/i,
+    category: "timeout",
+  },
+  // Network / connection
+  {
+    pattern:
+      /ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|network|connection\s*(?:reset|closed|refused|error)|fetch failed|连接(?:重置|拒绝|失败|中断)|网络(?:错误|异常|中断)/i,
+    category: "network_error",
+  },
+  // Auth
+  {
+    pattern:
+      /unauthorized|forbidden|invalid\s*api\s*key|authentication|auth(?:_|\s*)fail|401\b|403\b|鉴权失败|未授权|密钥无效|api\s*key/i,
+    category: "auth_failed",
+  },
+  // Model unavailable
+  {
+    pattern:
+      /model\s+not\s+found|model(?:_is)?_deactivated|does not exist|model\s+unavailable|no such model|模型不存在|模型不可用|模型未找到/i,
+    category: "model_unavailable",
+  },
+  // Context too long
+  {
+    pattern:
+      /context\s+(length|too|exceed|long|overflow|window)|max\s+tokens|prompt\s+is\s+too\s+long|request_too_large|上下文过长|上下文超出|超出最大上下文|请压缩上下文/i,
+    category: "context_too_long",
+  },
+  // Token / parse
+  {
+    pattern: /token(?:izer)?|parse token|invalid token|unexpected token/i,
+    category: "token_parse_error",
+  },
+  // Invalid model output / empty body shapes
+  {
+    pattern:
+      /invalid (?:model )?(?:response|output|format)|malformed|schema|json parse|parse json|empty[_ ]response|no (?:response )?body|null response/i,
+    category: "invalid_model_output",
+  },
+  // OpenAI-style / local-wrapper body error envelopes (HTTP often still 200)
+  {
+    pattern:
+      /"type"\s*:\s*"(?:server_error|rate_limit_error|overloaded_error|api_error)"|"code"\s*:\s*"(?:server_error|rate_limit|overloaded|internal_error)"|type\s*[=:]\s*(?:server_error|rate_limit_error|overloaded_error|api_error)|code\s*[=:]\s*(?:server_error|rate_limit|overloaded|internal_error)|"success"\s*:\s*false|"ok"\s*:\s*false|"status"\s*:\s*"(?:error|failed|fail)"|error_code|error_msg|err_msg|biz_code|ret_code|errno\s*[:=]\s*[1-9]/i,
+    category: "wrapped_api_error",
+  },
 ];
 
 /** A classified error record */

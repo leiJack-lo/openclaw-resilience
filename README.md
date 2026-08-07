@@ -17,7 +17,8 @@ LLM API 错误统计、分类、重试、任务恢复插件 — OpenClaw Plugin
 
 ## 功能
 
-- 📊 **错误分类** — 自动将 API / 会话错误分为 11 种类型（rate_limit、server_overload、token_parse_error 等）
+- 📊 **错误分类** — 自动将 API / 会话错误分为 12 种类型（rate_limit、server_overload、wrapped_api_error、token_parse_error 等）
+- 🧩 **包装 API Body 错误** — 本地网关 HTTP 200 但 body 含错误时仍可归类并拉起重试，Skill 支持按类别分配策略
 - 📝 **持久化日志** — 按日期记录每次 API 调用结果（JSONL 格式）
 - 📈 **多维统计** — 按时间（小时/日/周）和模型统计错误率、耗时
 - 🔁 **灵活重试** — 支持固定间隔、指数退避、自定义时间表三种策略

@@ -34,6 +34,8 @@ openclaw gateway restart
 - "打开 resilience 面板"
 - "修改超时重试策略为指数退避"
 - "生成今日错误日报"
+- "本地包装 API 返回 200 但 body 有错误，帮我归类并配重试策略"
+- "给 wrapped_api_error 加 4 次、15 秒起跳的指数重试"
 
 **验证方法**：重启后问 agent "resilience 插件安装好了吗？" 或直接试一个工具调用。如果提示工具不存在，就说明插件没加载成功。
 
@@ -187,13 +189,75 @@ View agent session and tool failure recovery records. These are separate from LL
 - "查看会话和工具失败恢复队列" → `resilience_sessions({ action: "summary" })`
 - "列出最近的会话恢复记录" → `resilience_sessions({ action: "list", limit: 20 })`
 
+## 本地包装 API：Body 错误捕获与策略分配
+
+很多**本地部署 / 二次包装**的 LLM 网关会这样返回：
+
+- 外层 HTTP 状态是 `200`（或其它“看起来成功”的码）
+- 真正的失败写在 body 里，例如：
+  - `{"error":{"message":"系统繁忙","type":"server_error"}}`
+  - `{"success":false,"error_msg":"上游繁忙，请稍后重试"}`
+  - `"code":429` / `"status":"error"` 等字段
+
+这会导致：
+
+1. 会话任务直接中断（agent_end 失败）
+2. 如果只按 HTTP 状态判断，插件以前**无法归类、也无法拉起 API 重试**
+
+从 **0.5.2** 起，插件会：
+
+1. **捕获** body / 错误文案中的包装错误信号（中英文、OpenAI 风格 envelope、`success:false` 等）
+2. **归类** 到可策略化的类别（优先 `rate_limit` / `server_overload` / `timeout` / `network_error`，否则 `wrapped_api_error`）
+3. **拉起重试**：写入 active retry + 默认策略覆盖 `wrapped_api_error`
+4. **会话恢复**：同时可排队下一轮“继续任务”指令
+
+### Agent 推荐工作流（给用户做策略分配）
+
+当用户说「帮我处理包装 API 报错重试」或「body 里有错误但 HTTP 是 200」时，按下面做：
+
+```text
+1) resilience_stats({ query: "today" })
+   → 看是否出现 wrapped_api_error / server_overload / rate_limit
+
+2) resilience_report({ reportType: "daily" }) 或 resilience_sessions({ action: "list" })
+   → 拿出具体错误原文，确认归类是否正确
+
+3) resilience_strategies({ action: "list" })
+   → 看现有策略的 retryOn 是否覆盖该类别
+
+4) 按用户意图分配策略（示例见下）
+```
+
+### 策略分配话术 → 工具调用
+
+| 用户意图 | 工具调用 |
+|----------|----------|
+| 给包装 body 错误单独做快速重试 | `resilience_strategies({ action: "add", strategyName: "local-wrapper-retry", updates: { type: "exponential", maxRetries: 4, intervals: ["15s","1m","3m","5m"], cooldownMs: "5s", retryOn: ["wrapped_api_error"] } })` |
+| 把包装错误并进默认指数退避 | `resilience_strategies({ action: "update", strategyName: "default-exponential", updates: { retryOn: ["rate_limit","server_overload","timeout","network_error","wrapped_api_error"] } })` |
+| 本地模型繁忙：更长退避 | `resilience_strategies({ action: "add", strategyName: "local-busy-backoff", updates: { type: "custom", maxRetries: 6, intervals: ["30s","2m","5m","10m","20m","30m"], retryOn: ["server_overload","wrapped_api_error"] } })` |
+| 只对限流固定 30 秒重试 | `resilience_strategies({ action: "update", strategyName: "rate-limit-fixed", updates: { intervals: ["30s"], maxRetries: 5, retryOn: ["rate_limit"] } })` |
+| 某本地模型单独策略 | `resilience_strategies({ action: "add", strategyName: "mimo-local-body", updates: { type: "exponential", maxRetries: 5, intervals: ["20s","1m","3m","8m","15m"], retryOn: ["wrapped_api_error","server_overload"], models: ["mimo-v2.5"] } })` |
+
+**归类后向用户汇报模板**（agent 输出建议）：
+
+```text
+已捕获并归类：
+- 类别：wrapped_api_error（HTTP 状态不可信，body 含错误）
+- 是否默认可重试：是
+- 命中策略：wrapped-api-body-retry / default-exponential
+- 建议：若本地网关经常 15s 内恢复，可把间隔改成 15s → 1m → 3m
+
+需要我帮你改策略吗？可以说：
+「给 wrapped_api_error 加 4 次、15 秒起跳的指数重试」
+```
+
 ## Error Categories
 
 | Category | Description | Retryable |
 |----------|-------------|-----------|
-| `rate_limit` | 429 Too Many Requests | ✅ |
-| `server_overload` | 503 Service Unavailable | ✅ |
-| `timeout` | Request timeout | ✅ |
+| `rate_limit` | 429 / body 限流文案 | ✅ |
+| `server_overload` | 503/502/500/529 或 body「系统繁忙/上游失败」 | ✅ |
+| `timeout` | Request timeout / 504/408 | ✅ |
 | `auth_failed` | 401/403 Authentication failed | ❌ |
 | `network_error` | Connection errors | ✅ |
 | `model_unavailable` | Model not found or offline | ✅ |
@@ -201,6 +265,7 @@ View agent session and tool failure recovery records. These are separate from LL
 | `token_parse_error` | Tokenizer/token parsing failure | ❌ |
 | `invalid_model_output` | Malformed model output / response format failure | ❌ |
 | `session_runtime_error` | Non-API session runtime failure | ❌ |
+| `wrapped_api_error` | **本地包装网关**：HTTP 看似成功但 body 含错误 envelope | ✅ |
 | `unknown` | Unclassified errors | ❌ |
 
 ## Retry Strategies
@@ -215,10 +280,10 @@ View agent session and tool failure recovery records. These are separate from LL
 
 | Name | Type | Max Retries | Intervals | Error Types |
 |------|------|-------------|-----------|-------------|
-| default-exponential | exponential | 5 | 1m→15m | rate_limit, server_overload, timeout, network_error |
+| default-exponential | exponential | 5 | 1m→15m | rate_limit, server_overload, timeout, network_error, **wrapped_api_error** |
 | rate-limit-fixed | fixed | 3 | 30s | rate_limit |
-| model-backoff | custom | 6 | 1m→2h | server_overload, model_unavailable |
-| network-retry | exponential | 4 | 5s→1m | network_error |
+| model-backoff | custom | 6 | 1m→2h | server_overload, model_unavailable, wrapped_api_error |
+| wrapped-api-body-retry | exponential | 4 | 15s→5m | **wrapped_api_error**（专打本地包装 body 错误） |
 
 ## Data Storage
 

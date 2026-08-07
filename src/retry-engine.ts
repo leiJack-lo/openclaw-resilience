@@ -36,7 +36,13 @@ const DEFAULT_STRATEGIES: RetryStrategy[] = [
     type: "exponential",
     maxRetries: 5,
     intervals: [60_000, 180_000, 300_000, 600_000, 900_000], // 1m, 3m, 5m, 10m, 15m
-    retryOn: ["rate_limit", "server_overload", "timeout", "network_error"],
+    retryOn: [
+      "rate_limit",
+      "server_overload",
+      "timeout",
+      "network_error",
+      "wrapped_api_error",
+    ],
     cooldownMs: 10_000,
     isDefault: true,
   },
@@ -53,9 +59,17 @@ const DEFAULT_STRATEGIES: RetryStrategy[] = [
     type: "custom",
     maxRetries: 6,
     intervals: [60_000, 300_000, 600_000, 1800_000, 3600_000, 7200_000], // 1m, 5m, 10m, 30m, 1h, 2h
-    retryOn: ["server_overload", "model_unavailable"],
+    retryOn: ["server_overload", "model_unavailable", "wrapped_api_error"],
     cooldownMs: 30_000,
     models: ["mimo-v2.5", "gpt-4o", "claude-3-opus"],
+  },
+  {
+    name: "wrapped-api-body-retry",
+    type: "exponential",
+    maxRetries: 4,
+    intervals: [15_000, 60_000, 180_000, 300_000], // 15s, 1m, 3m, 5m
+    retryOn: ["wrapped_api_error"],
+    cooldownMs: 5_000,
   },
 ];
 
@@ -74,6 +88,8 @@ export class RetryEngine {
 
   /**
    * Load strategies from disk, falling back to defaults.
+   * Also ensures newly introduced retryable categories (e.g. wrapped_api_error)
+   * remain covered when an older strategies.json is present.
    */
   private loadStrategies(): RetryStrategy[] {
     try {
@@ -81,13 +97,48 @@ export class RetryEngine {
         const raw = fs.readFileSync(this.strategiesPath, "utf-8");
         const loaded = JSON.parse(raw) as RetryStrategy[];
         if (Array.isArray(loaded) && loaded.length > 0) {
-          return loaded.map(normalizeRetryStrategy);
+          return this.ensureCategoryCoverage(
+            loaded.map(normalizeRetryStrategy)
+          );
         }
       }
     } catch {
       // Corrupted — use defaults
     }
-    return [...DEFAULT_STRATEGIES];
+    return DEFAULT_STRATEGIES.map((s) => normalizeRetryStrategy({ ...s }));
+  }
+
+  /**
+   * Patch older strategy files so new transient categories are not left without
+   * any matching strategy (which would silently disable retries).
+   */
+  private ensureCategoryCoverage(strategies: RetryStrategy[]): RetryStrategy[] {
+    const required: ErrorCategory[] = ["wrapped_api_error"];
+    const missing = required.filter(
+      (cat) => !strategies.some((s) => s.retryOn.includes(cat))
+    );
+    if (missing.length === 0) return strategies;
+
+    const target =
+      strategies.find((s) => s.isDefault) ??
+      strategies.find((s) => s.name === "default-exponential") ??
+      strategies[0];
+    if (target) {
+      target.retryOn = [...new Set([...target.retryOn, ...missing])];
+    }
+
+    const hasBodyStrategy = strategies.some(
+      (s) => s.name === "wrapped-api-body-retry"
+    );
+    if (!hasBodyStrategy) {
+      const bodyDefault = DEFAULT_STRATEGIES.find(
+        (s) => s.name === "wrapped-api-body-retry"
+      );
+      if (bodyDefault) {
+        strategies.push(normalizeRetryStrategy({ ...bodyDefault }));
+      }
+    }
+    return strategies;
   }
 
   /**

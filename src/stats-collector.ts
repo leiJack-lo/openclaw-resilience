@@ -38,6 +38,7 @@ function emptyErrors(): Record<ErrorCategory, number> {
     token_parse_error: 0,
     invalid_model_output: 0,
     session_runtime_error: 0,
+    wrapped_api_error: 0,
     unknown: 0,
   };
 }

@@ -2,7 +2,7 @@
   "id": "resilience",
   "name": "Resilience",
   "description": "LLM API and agent session error tracking, classification, retry, and task recovery. REQUIRES the @leiJack-lo/resilience plugin (install plugin first, then this skill). Provides Chinese natural language interface only; core tools + hooks + dashboard server come from the plugin.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "author": "leiJack-lo",
   "license": "MIT",
   "plugin": "resilience",
@@ -16,6 +16,43 @@
   ],
   "naturalLanguage": {
     "examples": [
+      {
+        "intent": "本地包装 API 返回 200 但 body 有错误，帮我归类并配重试策略",
+        "tool": "resilience_strategies",
+        "params": {
+          "action": "add",
+          "strategyName": "local-wrapper-retry",
+          "updates": {
+            "type": "exponential",
+            "maxRetries": 4,
+            "intervals": ["15s", "1m", "3m", "5m"],
+            "cooldownMs": "5s",
+            "retryOn": ["wrapped_api_error"]
+          }
+        }
+      },
+      {
+        "intent": "给 wrapped_api_error 加到默认指数退避策略",
+        "tool": "resilience_strategies",
+        "params": {
+          "action": "update",
+          "strategyName": "default-exponential",
+          "updates": {
+            "retryOn": [
+              "rate_limit",
+              "server_overload",
+              "timeout",
+              "network_error",
+              "wrapped_api_error"
+            ]
+          }
+        }
+      },
+      {
+        "intent": "查看今天有没有包装 API body 错误",
+        "tool": "resilience_stats",
+        "params": { "query": "today" }
+      },
       {
         "intent": "查看今天报错统计",
         "tool": "resilience_stats",

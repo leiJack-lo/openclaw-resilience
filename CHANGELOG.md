@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.2
+
+- Fixed retries for **local/wrapped LLM gateways** that return HTTP 200 (or other misleading statuses) while embedding the real failure in the response body.
+- Added error category `wrapped_api_error` and expanded body/pattern classification (OpenAI-style envelopes, `success:false`, Chinese “系统繁忙/上游失败”, embedded 429/5xx text).
+- Mapped OpenClaw-native categories/aliases such as `overloaded`, `connection_reset`, and `model_not_found` onto the resilience taxonomy so they are no longer treated as non-retryable `unknown`.
+- `agent_end` now schedules API retries for API-shaped body errors when `model_call_ended` did not already register the same run.
+- Default strategies cover `wrapped_api_error`; older `strategies.json` files are auto-patched so the new category is not left without a matching strategy.
+- Skill docs: capture → classify → assign strategy workflow and Chinese natural-language examples for body-error retries.
+- Added `verify:body-errors` regression coverage.
+
 ## 0.5.1
 
 - Changed retry duration display in the dashboard and tool reports from raw milliseconds to human-readable units such as `30s`, `2分钟`, and `1小时`.
